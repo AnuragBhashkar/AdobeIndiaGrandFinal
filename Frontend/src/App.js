@@ -1,5 +1,6 @@
 import React, { useState, createContext, useContext, useEffect, useRef } from 'react';
 import axios from 'axios';
+import PdfViewer from './PdfViewer';
 
 // --- SVG Icons (re-usable) ---
 const AdobeLogo = ({ color, size }) => (
@@ -203,7 +204,6 @@ const PdfChatPage = () => {
   
   const [pdfs, setPdfs] = useState([]);
   const [selectedPDF, setSelectedPDF] = useState(null);
-  const [zoomLevel, setZoomLevel] = useState(1);
   
   const [persona, setPersona] = useState('');
   const [job, setJob] = useState('');
@@ -212,23 +212,14 @@ const PdfChatPage = () => {
   const [error, setError] = useState('');
 
   const [messages, setMessages] = useState([]);
-  const [viewerUrl, setViewerUrl] = useState('');
-
-  useEffect(() => {
-    return () => {
-        if (viewerUrl) {
-            URL.revokeObjectURL(viewerUrl);
-        }
-    };
-  }, [viewerUrl]);
-
+  
+  const [filePromise, setFilePromise] = useState(null);
 
   const handlePDFSelect = (pdf) => {
     if (selectedPDF?.name !== pdf.name) {
         setSelectedPDF(pdf);
         setMessages([]);
-        setZoomLevel(1);
-        setViewerUrl(URL.createObjectURL(pdf) + '#page=1');
+        setFilePromise(pdf.arrayBuffer());
     }
   };
 
@@ -278,28 +269,34 @@ const PdfChatPage = () => {
         setLoading(false);
     }
   };
-
-  const handleWheelZoom = (e) => {
-    e.preventDefault();
-    if (e.deltaY < 0) setZoomLevel(prev => Math.min(3, prev + 0.1));
-    else setZoomLevel(prev => Math.max(0.2, prev - 0.1));
-  };
   
   const handleSendQuery = async (msg) => {
     const userMsg = { role: 'user', content: msg };
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
-    setTimeout(() => {
-        setMessages(prev => [...prev, { role: 'bot', content: `This is a mocked response for your follow-up: "${msg}"` }]);
+
+    try {
+        const response = await axios.post('http://localhost:8000/chat/', {
+            history: messages,
+            query: msg,
+            context: JSON.stringify(analysisResult)
+        });
+        
+        setMessages(prev => [...prev, response.data]);
+
+    } catch (err) {
+        const errorMessage = err.response?.data?.detail || 'Failed to get a response.';
+        setMessages(prev => [...prev, { role: 'bot', content: `Error: ${errorMessage}` }]);
+    } finally {
         setLoading(false);
-    }, 1000);
+    }
   };
 
   const handleInsightClick = (insight) => {
       const pdfFile = pdfs.find(p => p.name === insight.document);
       if (pdfFile) {
           setSelectedPDF(pdfFile);
-          setViewerUrl(URL.createObjectURL(pdfFile) + '#page=' + (insight.page_number + 1));
+          setFilePromise(pdfFile.arrayBuffer());
       }
   };
 
@@ -313,8 +310,16 @@ const PdfChatPage = () => {
       />
       <div style={styles.mainContent}>
         <div style={styles.viewerPanel}>
-            <div style={styles.zoomHint}>Use mouse wheel to zoom | {Math.round(zoomLevel * 100)}%</div>
-            <PDFViewer url={viewerUrl} zoomLevel={zoomLevel} onWheelZoom={handleWheelZoom}/>
+            {filePromise ? (
+                <PdfViewer 
+                    filePromise={filePromise} 
+                    fileName={selectedPDF ? selectedPDF.name : 'document.pdf'} 
+                />
+            ) : (
+                <div style={getPdfChatStyles(currentTheme).viewerPlaceholder}>
+                    <p>Select a PDF to view it here.</p>
+                </div>
+            )}
         </div>
         <ChatAndAnalysisSection
             messages={messages}
@@ -332,13 +337,6 @@ const PdfChatPage = () => {
       </div>
     </div>
   );
-};
-
-const PDFViewer = ({ url, zoomLevel, onWheelZoom }) => {
-  const { currentTheme } = useTheme();
-  const styles = getPdfChatStyles(currentTheme);
-  if (!url) return <div style={styles.viewerPlaceholder}><p>Select a PDF to view it here.</p></div>;
-  return <div style={styles.viewer} onWheel={onWheelZoom}><iframe key={url} title="PDF Preview" src={url} style={{width: '100%', height: '100%', border: 'none', transform: `scale(${zoomLevel})`, transformOrigin: 'top center'}}/></div>;
 };
 
 const StructuredTextViewer = ({ text }) => {
@@ -491,7 +489,7 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
                         <div style={styles.llmInsightsContainer}>
                             <h4>Enhanced Insights from Gemini:</h4>
                             
-                            {analysisResult.llm_insights.key_insights?.length > 0 && (
+                            {analysisResult?.llm_insights?.key_insights?.length > 0 && (
                                 <div style={styles.insightCategory}>
                                     <h6 style={styles.insightCategoryTitle}>Key Insights</h6>
                                     <ul>
@@ -500,7 +498,7 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
                                 </div>
                             )}
 
-                            {analysisResult.llm_insights.did_you_know?.length > 0 && (
+                            {analysisResult?.llm_insights?.did_you_know?.length > 0 && (
                                 <div style={styles.insightCategory}>
                                     <h6 style={styles.insightCategoryTitle}>Did You Know?</h6>
                                     <ul>
@@ -509,7 +507,7 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
                                 </div>
                             )}
 
-                            {analysisResult.llm_insights.cross_document_connections?.length > 0 && (
+                            {analysisResult?.llm_insights?.cross_document_connections?.length > 0 && (
                                 <div style={styles.insightCategory}>
                                     <h6 style={styles.insightCategoryTitle}>Connections Across Documents</h6>
                                     <ul>
@@ -679,8 +677,6 @@ const getPdfChatStyles = (theme) => ({
     activePdfListItem: { backgroundColor: theme.activeItem, color: theme.activeItemText, fontWeight: 'bold', borderColor: theme.primary },
     mainContent: { display: 'flex', flexGrow: 1, overflow: 'hidden' },
     viewerPanel: { flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: theme.background, position: 'relative', borderRight: `1px solid ${theme.border}` },
-    zoomHint: { position: 'absolute', top: '1rem', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'rgba(0, 0, 0, 0.6)', color: 'white', padding: '0.25rem 0.75rem', borderRadius: '12px', fontSize: '0.8rem', zIndex: 10, pointerEvents: 'none', userSelect: 'none' },
-    viewer: { flexGrow: 1, display: 'flex', justifyContent: 'center', backgroundColor: theme.secondary, overflow: 'auto', margin: '1rem', marginTop: '3rem' },
     viewerPlaceholder: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '1rem', textAlign: 'center', color: theme.text, opacity: 0.7 },
     chatPanel: { flex: 1.5, backgroundColor: theme.secondary, padding: '1rem', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
     sidebarTitle: { margin: '0 0 1rem 0', color: theme.header, borderBottom: `1px solid ${theme.border}`, paddingBottom: '0.5rem' },
