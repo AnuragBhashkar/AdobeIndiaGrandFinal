@@ -1,0 +1,14 @@
+spacy
+sentence-transformers
+scipy
+pymupdf
+pandas
+joblib
+rapidfuzz
+fastapi
+uvicorn
+python-multipart
+httpx
+dotenv
+azure-cognitiveservices-speech
+pyttsx3

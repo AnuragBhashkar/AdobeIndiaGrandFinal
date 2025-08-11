@@ -1,0 +1,8 @@
+venv/
+__pycache__/
+*.pyc
+local_model/
+.env
+*.log
+*.pdf
+*.json
