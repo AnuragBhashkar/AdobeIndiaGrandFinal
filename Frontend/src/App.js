@@ -13,6 +13,12 @@ const CloseIcon = ({ color }) => (
         <path d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12L19 6.41Z" fill={color}/>
     </svg>
 );
+const TranslateIcon = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12.87 15.07L10.33 12.56L10.36 12.53C12.1 10.59 13.57 8.42 14.73 6H18V4H14V2H12V4H8.07C7.16 5.25 6.35 6.62 5.68 8H3V10H10.25C9.5 11.83 8.5 13.5 7.33 15.07H3V17H7.33C8.5 18.5 9.5 20.17 10.25 22H12.25C11.5 20.17 10.5 18.5 9.33 17H13.33C13.67 16.5 14 16 14.29 15.5C14.58 15 14.83 14.5 15.05 14H19V12H12.87V15.07Z" fill="currentColor"/>
+    </svg>
+);
+
 
 // Custom hook for typing animation
 const useTypingEffect = (textToType, speed = 20) => {
@@ -339,6 +345,88 @@ const PdfChatPage = () => {
   );
 };
 
+// --- NEW: Reusable component for showing a translate button and dropdown ---
+const TranslateButton = ({ onSelectLanguage, styles }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const wrapperRef = useRef(null);
+    const languages = { "es": "Spanish", "fr": "French", "hi": "Hindi" };
+
+    useEffect(() => {
+        function handleClickOutside(event) {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [wrapperRef]);
+
+    return (
+        <div ref={wrapperRef} style={{ position: 'relative', display: 'inline-block', marginLeft: '8px' }}>
+            <button onClick={() => setIsOpen(!isOpen)} style={styles.translateButton} title="Translate text">
+                <TranslateIcon />
+            </button>
+            {isOpen && (
+                <div style={styles.translateDropdown}>
+                    {Object.entries(languages).map(([code, name]) => (
+                        <div key={code} onClick={() => { onSelectLanguage(code); setIsOpen(false); }} style={styles.translateDropdownItem}>
+                            {name}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// --- NEW: Wrapper for text that can be translated ---
+const TranslatableItem = ({ text, styles }) => {
+    const [currentText, setCurrentText] = useState(text);
+    const [isTranslated, setIsTranslated] = useState(false);
+    const [isTranslating, setIsTranslating] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleTranslate = async (lang) => {
+        setIsTranslating(true);
+        setError('');
+        try {
+            const response = await axios.post('http://localhost:8000/translate-text/', {
+                text: text, // always translate original text
+                target_language: lang
+            });
+            setCurrentText(response.data.translated_text);
+            setIsTranslated(true);
+        } catch (err) {
+            setError("Translation failed.");
+            console.error("Translation failed:", err);
+        } finally {
+            setIsTranslating(false);
+        }
+    };
+
+    const showOriginal = () => {
+        setCurrentText(text);
+        setIsTranslated(false);
+        setError('');
+    };
+
+    return (
+        <li style={styles.translatableListItem}>
+            <span>
+                {isTranslating ? 'Translating...' : currentText}
+                {error && <span style={{color: 'red', marginLeft: '8px'}}>{error}</span>}
+            </span>
+            <div style={{marginLeft: 'auto', display: 'flex', alignItems: 'center'}}>
+                {isTranslated && (
+                    <button onClick={showOriginal} style={styles.showOriginalButton}>Original</button>
+                )}
+                <TranslateButton onSelectLanguage={handleTranslate} styles={styles} />
+            </div>
+        </li>
+    );
+};
+
+
 const StructuredTextViewer = ({ text }) => {
     const { currentTheme } = useTheme();
     const styles = getPdfChatStyles(currentTheme);
@@ -389,11 +477,14 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
   const [revealedInsights, setRevealedInsights] = useState([]);
   const [isPodcastLoading, setIsPodcastLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
+  const [podcastLanguage, setPodcastLanguage] = useState('en'); // NEW: state for podcast language
+  const [translatedSnippets, setTranslatedSnippets] = useState({}); // NEW: state for translated text snippets
 
   useEffect(() => {
     if (analysisResult?.subsection_analysis) {
         setRevealedInsights([]);
         setAudioUrl(null);
+        setTranslatedSnippets({});
         const insights = analysisResult.subsection_analysis;
         let i = 0;
         const intervalId = setInterval(() => {
@@ -432,7 +523,8 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
 
       try {
           const response = await axios.post('http://localhost:8000/generate-podcast/', {
-              analysis_data: analysisResult
+              analysis_data: analysisResult,
+              language: podcastLanguage // MODIFIED: send selected language
           }, {
               responseType: 'blob'
           });
@@ -446,6 +538,21 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
           setIsPodcastLoading(false);
       }
   };
+
+  const handleTranslateSnippet = async (key, text, lang) => {
+    setTranslatedSnippets(prev => ({ ...prev, [key]: "Translating..." }));
+    try {
+        const response = await axios.post('http://localhost:8000/translate-text/', {
+            text: text,
+            target_language: lang
+        });
+        setTranslatedSnippets(prev => ({ ...prev, [key]: response.data.translated_text }));
+    } catch (err) {
+        console.error("Translation failed:", err);
+        setTranslatedSnippets(prev => ({ ...prev, [key]: "Translation failed." }));
+    }
+  };
+
 
   return (
     <div style={styles.chatPanel}>
@@ -471,17 +578,31 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
                     {groupedInsights && Object.entries(groupedInsights).map(([docName, insights]) => (
                         <div key={docName} style={styles.insightGroup}>
                             <h5 style={styles.insightDocTitle}>{docName}</h5>
-                            {insights.map((sub, idx) => (
-                                <div key={idx} style={styles.analysisSnippet} onClick={() => onInsightClick(sub)}>
-                                    <p style={styles.analysisReason}>
-                                        <strong>Why this was chosen:</strong> {sub.reason}
-                                    </p>
-                                    <StructuredTextViewer text={sub.refined_text} />
-                                    <small>
-                                        (From Page: {sub.page_number + 1})
-                                    </small>
-                                </div>
-                            ))}
+                            {insights.map((sub, idx) => {
+                                const snippetKey = `${docName}-${sub.page_number}-${idx}`;
+                                const currentText = translatedSnippets[snippetKey] || sub.refined_text;
+                                const isTranslated = !!translatedSnippets[snippetKey];
+
+                                return (
+                                    <div key={snippetKey} style={styles.analysisSnippet} onClick={() => onInsightClick(sub)}>
+                                        <p style={styles.analysisReason}>
+                                            <strong>Why this was chosen:</strong> {sub.reason}
+                                        </p>
+                                        <StructuredTextViewer text={currentText} />
+                                        <div style={styles.snippetFooter}>
+                                            <small>
+                                                (Page: {sub.page_number + 1})
+                                            </small>
+                                            <div style={{display: 'flex', alignItems: 'center'}}>
+                                                {isTranslated && (
+                                                     <button onClick={(e) => { e.stopPropagation(); setTranslatedSnippets(p => ({...p, [snippetKey]: undefined})) }} style={styles.showOriginalButton}>Original</button>
+                                                )}
+                                                <TranslateButton styles={styles} onSelectLanguage={(lang) => handleTranslateSnippet(snippetKey, sub.refined_text, lang)} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     ))}
                     
@@ -493,7 +614,7 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
                                 <div style={styles.insightCategory}>
                                     <h6 style={styles.insightCategoryTitle}>Key Insights</h6>
                                     <ul>
-                                        {analysisResult.llm_insights.key_insights.map((item, i) => <li key={i}>{item}</li>)}
+                                        {analysisResult.llm_insights.key_insights.map((item, i) => <TranslatableItem key={i} text={item} styles={styles} />)}
                                     </ul>
                                 </div>
                             )}
@@ -502,7 +623,7 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
                                 <div style={styles.insightCategory}>
                                     <h6 style={styles.insightCategoryTitle}>Did You Know?</h6>
                                     <ul>
-                                        {analysisResult.llm_insights.did_you_know.map((item, i) => <li key={i}>{item}</li>)}
+                                        {analysisResult.llm_insights.did_you_know.map((item, i) => <TranslatableItem key={i} text={item} styles={styles} />)}
                                     </ul>
                                 </div>
                             )}
@@ -511,7 +632,7 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
                                 <div style={styles.insightCategory}>
                                     <h6 style={styles.insightCategoryTitle}>Connections Across Documents</h6>
                                     <ul>
-                                        {analysisResult.llm_insights.cross_document_connections.map((item, i) => <li key={i}>{item}</li>)}
+                                        {analysisResult.llm_insights.cross_document_connections.map((item, i) => <TranslatableItem key={i} text={item} styles={styles} />)}
                                     </ul>
                                 </div>
                             )}
@@ -519,9 +640,17 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, persona, set
                     )}
 
                     <div style={styles.podcastContainer}>
-                        <button onClick={handleGeneratePodcast} style={styles.button} disabled={isPodcastLoading || loading}>
-                            {isPodcastLoading ? 'Generating Audio...' : '🎧 Generate Podcast Summary'}
-                        </button>
+                        <div style={styles.podcastControls}>
+                            <button onClick={handleGeneratePodcast} style={styles.button} disabled={isPodcastLoading || loading}>
+                                {isPodcastLoading ? 'Generating...' : '🎧 Generate Podcast'}
+                            </button>
+                            <select value={podcastLanguage} onChange={e => setPodcastLanguage(e.target.value)} style={styles.languageSelector} disabled={isPodcastLoading || loading}>
+                                <option value="en">English</option>
+                                <option value="es">Spanish</option>
+                                <option value="fr">French</option>
+                                <option value="hi">Hindi</option>
+                            </select>
+                        </div>
                         {audioUrl && (
                             <audio controls src={audioUrl} style={styles.audioPlayer}>
                                 Your browser does not support the audio element.
@@ -706,7 +835,16 @@ const getPdfChatStyles = (theme) => ({
     insightCategory: { marginBottom: '1rem' },
     insightCategoryTitle: { margin: '0 0 0.5rem 0', color: theme.header, fontWeight: 'bold', fontSize: '1.1rem' },
     podcastContainer: { marginTop: '1.5rem', padding: '1rem', backgroundColor: theme.secondary, borderRadius: '8px', border: `1px solid ${theme.border}` },
+    podcastControls: { display: 'flex', gap: '0.5rem', alignItems: 'center' },
+    languageSelector: { padding: '0.75rem', backgroundColor: theme.inputBg, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '5px' },
     audioPlayer: { width: '100%', marginTop: '1rem' },
+    // --- NEW STYLES for Translation ---
+    translateButton: { background: 'none', border: 'none', cursor: 'pointer', color: theme.text, padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', '&:hover': { backgroundColor: theme.border } },
+    translateDropdown: { position: 'absolute', right: 0, top: '100%', backgroundColor: theme.background, border: `1px solid ${theme.border}`, borderRadius: '4px', zIndex: 10, boxShadow: '0 2px 10px rgba(0,0,0,0.2)' },
+    translateDropdownItem: { padding: '8px 12px', cursor: 'pointer', '&:hover': { backgroundColor: theme.inputBg } },
+    translatableListItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' },
+    showOriginalButton: { background: 'none', border: `1px solid ${theme.border}`, color: theme.text, cursor: 'pointer', borderRadius: '4px', padding: '2px 6px', fontSize: '0.75rem', marginRight: '4px' },
+    snippetFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', color: theme.text, opacity: 0.8 },
 });
 
 const AppWrapper = () => (

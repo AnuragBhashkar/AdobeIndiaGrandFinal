@@ -32,8 +32,8 @@ load_dotenv()
 # --- Initialize FastAPI App ---
 app = FastAPI(
     title="PDF Intelligence API",
-    description="API for persona-driven PDF analysis and audio summary generation.",
-    version="1.1.0"
+    description="API for persona-driven PDF analysis and multi-language audio summary generation.",
+    version="1.3.0" # MODIFIED: Version bump
 )
 
 # --- Add CORS Middleware ---
@@ -227,7 +227,7 @@ async def generate_llm_insights(subsections: List[dict], persona: str, job_to_be
         print("WARNING: GEMINI_API_KEY environment variable not set.")
         return {"key_insights": ["Gemini API key not configured."], "did_you_know": [], "cross_document_connections": []}
         
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={api_key}"
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
     payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json", "responseSchema": json_schema}}
 
     try:
@@ -304,16 +304,36 @@ async def analyze_documents(files: List[UploadFile] = File(...), persona: str = 
         if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
 
 # ==============================================================================
-#  MODIFIED: TTS FUNCTIONS AND ENDPOINT FOR PODCAST MODE
+# NEW & MODIFIED: MULTI-LANGUAGE FEATURES (TRANSLATION & PODCAST)
 # ==============================================================================
 
-# --- Pydantic model for the podcast request body ---
+# --- NEW: Language and Voice Configuration ---
+SUPPORTED_LANGUAGES = {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "hi": "Hindi"
+}
+
+AZURE_VOICE_MAP = {
+    "en": "en-US-JennyNeural",
+    "es": "es-ES-ElviraNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "hi": "hi-IN-SwaraNeural"
+}
+
+# --- MODIFIED: Pydantic models for the new features ---
 class PodcastRequest(BaseModel):
     analysis_data: Dict[str, Any]
+    language: str = "en" # Language code e.g., 'en', 'es', 'hi'
 
-# --- Azure TTS Function (for evaluation) ---
-def text_to_speech_azure(text: str, output_filename: str):
-    """Generates audio using Azure's Text-to-Speech service."""
+class TranslationRequest(BaseModel):
+    text: str
+    target_language: str
+
+# --- MODIFIED: Azure TTS Function to support multiple languages ---
+def text_to_speech_azure(text: str, output_filename: str, language: str = "en"):
+    """Generates audio using Azure's Text-to-Speech service for a specific language."""
     speech_key = os.environ.get("AZURE_TTS_KEY")
     service_region_endpoint = os.environ.get("AZURE_TTS_ENDPOINT")
     
@@ -326,15 +346,20 @@ def text_to_speech_azure(text: str, output_filename: str):
     except Exception:
         print(f"❌ Invalid AZURE_TTS_ENDPOINT format: {service_region_endpoint}")
         return False
+    
+    voice_name = AZURE_VOICE_MAP.get(language)
+    if not voice_name:
+        print(f"WARNING: No Azure voice mapped for language '{language}'. Defaulting to English.")
+        voice_name = AZURE_VOICE_MAP["en"]
 
     speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=region)
-    speech_config.speech_synthesis_voice_name = "en-US-JennyNeural"
+    speech_config.speech_synthesis_voice_name = voice_name
     audio_config = speechsdk.audio.AudioOutputConfig(filename=output_filename)
     synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
     
     result = synthesizer.speak_text_async(text).get()
     if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-        print(f"✅ Azure speech synthesized to [{output_filename}]")
+        print(f"✅ Azure speech synthesized to [{output_filename}] in {SUPPORTED_LANGUAGES.get(language, 'English')}")
         return True
     elif result.reason == speechsdk.ResultReason.Canceled:
         cancellation = result.cancellation_details
@@ -344,7 +369,7 @@ def text_to_speech_azure(text: str, output_filename: str):
         return False
     return False
 
-# --- Offline TTS Function (for local development) ---
+# --- Offline TTS Function (No changes, but language support may be limited) ---
 def text_to_speech_offline(text: str, output_filename: str):
     """Generates audio using the system's built-in TTS voices."""
     try:
@@ -357,10 +382,43 @@ def text_to_speech_offline(text: str, output_filename: str):
         print(f"❌ Error with offline TTS: {e}")
         return False
 
-# --- Gemini Function to Generate Podcast Script ---
+# --- NEW: Gemini Function to Translate Text ---
+async def translate_text_gemini(text: str, target_language: str):
+    """Uses Gemini to translate text to a target language."""
+    language_name = SUPPORTED_LANGUAGES.get(target_language)
+    if not language_name:
+        return "Error: Unsupported language."
+
+    print(f"🌍 Translating text to {language_name} with Gemini...")
+    prompt = f"Translate the following text into {language_name}. Provide only the translated text, without any additional commentary or preamble.\n\n---\n\n{text}"
+    
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key: return "Error: Gemini API key not configured."
+        
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(api_url, json=payload)
+            response.raise_for_status()
+            result = response.json()
+            translated_text = result['candidates'][0]['content']['parts'][0]['text']
+            print(f"✅ Text successfully translated to {language_name}.")
+            return translated_text.strip()
+    except Exception as e:
+        print(f"❌ Error during translation: {e}")
+        return "Error: Could not translate the text."
+
+
+# --- MODIFIED: Gemini Function to Generate Podcast Script (now always in English) ---
 async def generate_podcast_script(analysis_data: dict):
-    """Uses Gemini to synthesize analysis results into a podcast script."""
-    print("🎙️ Generating podcast script with Gemini...")
+    """
+    Uses Gemini to synthesize analysis results into a podcast script.
+    MODIFIED: This function now ALWAYS generates the script in English for quality control.
+    The script is also longer to meet the 2-5 minute requirement.
+    """
+    print(f"🎙️ Generating podcast script in English with Gemini...")
     
     persona = analysis_data.get("metadata", {}).get("persona", "user")
     job = analysis_data.get("metadata", {}).get("job_to_be_done", "understand documents")
@@ -377,16 +435,19 @@ async def generate_podcast_script(analysis_data: dict):
     context += "\nAnd these interesting facts:\n"
     for fact in llm_insights.get("did_you_know", []):
         context += f"- {fact}\n"
-        
+    
+    # MODIFIED: Updated prompt for longer, more narrative script
     prompt = f"""
-    You are a podcast host. Your task is to create a short, engaging 2-3 minute audio script based on the provided analysis.
-    The script should be a narrated overview that synthesizes the information.
-    - Start with a friendly greeting.
-    - Summarize the key findings in a conversational, easy-to-understand way.
-    - Weave in the "Did you know?" facts naturally.
-    - Conclude with a brief summary.
-    - The tone should be informative and engaging.
-    - Do NOT just list the points. Create a flowing narrative.
+    You are a podcast host. Your task is to create an engaging audio script, approximately 400-600 words long, based on the provided analysis. This should result in a 3-4 minute podcast.
+    The script must be written in English.
+    - Start with a friendly, welcoming greeting.
+    - Create a flowing narrative. Do NOT just list the points. Weave the insights and facts together into a coherent story.
+    - Elaborate on the key findings. Explain their significance in a conversational, easy-to-understand way.
+    - Naturally integrate the "Did you know?" facts to make the podcast more interesting.
+    - If there are cross-document connections, highlight them as a key discovery.
+    - Conclude with a strong summary of the most important takeaways.
+    - The tone should be informative, engaging, and professional.
+    - Respond ONLY with the text of the script itself, with no intro, title, or explanation.
 
     Here is the analysis to use for the script:
     {context}
@@ -395,42 +456,93 @@ async def generate_podcast_script(analysis_data: dict):
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key: return "Error: Gemini API key not configured."
         
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={api_key}"
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client: # Increased timeout for longer response
             response = await client.post(api_url, json=payload)
             response.raise_for_status()
             result = response.json()
             script = result['candidates'][0]['content']['parts'][0]['text']
-            print("✅ Podcast script generated successfully.")
+            print("✅ English podcast script generated successfully.")
             return script
     except Exception as e:
         print(f"❌ Error generating podcast script: {e}")
         return "There was an error creating the audio summary."
 
-# --- Podcast Generation Endpoint ---
+# --- NEW: Text Translation Endpoint ---
+@app.post("/translate-text/")
+async def translate_text_endpoint(request: TranslationRequest):
+    """
+    Translates a given text to a supported language.
+    """
+    if request.target_language not in SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported language. Please use one of: {list(SUPPORTED_LANGUAGES.keys())}"
+        )
+
+    translated_text = await translate_text_gemini(request.text, request.target_language)
+
+    if "Error:" in translated_text:
+         raise HTTPException(status_code=500, detail=translated_text)
+
+    return {
+        "original_text": request.text, 
+        "translated_text": translated_text, 
+        "language": request.target_language
+    }
+
+# --- MODIFIED: Podcast Generation Endpoint ---
 @app.post("/generate-podcast/")
 async def generate_podcast_endpoint(request: PodcastRequest):
     """
-    Generates a podcast audio summary from the analysis data.
+    Generates a podcast audio summary from the analysis data in the specified language.
+    MODIFIED: Now generates in English first, then translates if needed.
     """
+    lang = request.language
+    if lang not in SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported language '{lang}'. Please use one of: {list(SUPPORTED_LANGUAGES.keys())}"
+        )
+
+    # Step 1: Always generate the script in English for quality.
     script = await generate_podcast_script(request.analysis_data)
     
+    if "Error:" in script:
+        raise HTTPException(status_code=500, detail=script)
+    
+    # Step 2: Translate the English script if a different language is requested.
+    final_script = script
+    if lang != "en":
+        print(f"INFO: Translating English script to {SUPPORTED_LANGUAGES.get(lang)}...")
+        translated_script = await translate_text_gemini(script, lang)
+        if "Error:" in translated_script:
+            raise HTTPException(status_code=500, detail=translated_script)
+        final_script = translated_script
+
+    # Step 3: Synthesize the final script (English or translated) to audio.
     output_filename = f"temp_{uuid.uuid4()}.mp3"
     
-    tts_provider = os.environ.get("TTS_PROVIDER")
+    tts_provider = os.environ.get("TTS_PROVIDER", "offline") # Default to offline if not set
     success = False
 
     if tts_provider == 'azure':
-        print("INFO: Using Azure TTS for audio generation.")
-        success = text_to_speech_azure(script, output_filename)
+        print(f"INFO: Using Azure TTS for audio generation in {lang}.")
+        success = text_to_speech_azure(final_script, output_filename, language=lang)
     else:
-        print("INFO: Using offline TTS for local development.")
-        success = text_to_speech_offline(script, output_filename)
+        print("INFO: Using offline TTS for local development (multi-language support may be limited).")
+        success = text_to_speech_offline(final_script, output_filename)
     
     if not success:
+        if os.path.exists(output_filename):
+            os.remove(output_filename)
         raise HTTPException(status_code=500, detail="Failed to synthesize audio.")
 
-    return FileResponse(path=output_filename, media_type='audio/mpeg', filename="podcast_summary.mp3")
+    return FileResponse(
+        path=output_filename, 
+        media_type='audio/mpeg', 
+        filename=f"podcast_summary_{lang}.mp3"
+    )
