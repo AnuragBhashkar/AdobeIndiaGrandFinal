@@ -111,3 +111,19 @@ yarn-error.log*
 
 # Python virtual environment
 /venv/
+# General
+.env
+.DS_Store
+
+# Backend (Python)
+venv/
+__pycache__/
+*.pyc
+model/
+temp_*/
+
+# Frontend (React)
+node_modules/
+build/
+.npm
+npm-debug.log*
