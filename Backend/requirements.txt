@@ -12,3 +12,4 @@ httpx
 dotenv
 azure-cognitiveservices-speech
 pyttsx3
+redis
