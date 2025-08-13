@@ -52,7 +52,7 @@ const useTypingEffect = (textToType, speed = 20) => {
     return { displayedText, isDone };
 };
 
-// --- Login/Signup Modal Component (No Changes) ---
+// --- Login/Signup Modal Component ---
 const LoginModal = ({ isOpen, onClose, onLogin }) => {
     const { currentTheme } = useTheme();
     const styles = getModalStyles(currentTheme);
@@ -93,7 +93,7 @@ const LoginModal = ({ isOpen, onClose, onLogin }) => {
     );
 };
 
-// --- Home Page & About Page Components (No Changes) ---
+// --- Home Page & About Page Components ---
 const HomePage = ({ onNavigate, onLogin, isLoggedIn, userName }) => {
   const { currentTheme } = useTheme();
   const styles = getHomePageStyles(currentTheme);
@@ -148,7 +148,7 @@ const AboutUsPage = () => {
     );
 };
 
-// --- Shared Components (Navbar & Footer) (No Changes) ---
+// --- Shared Components (Navbar & Footer) ---
 const AppNavbar = ({ onNavigate, toggleTheme, isLoggedIn, onLogout, onLoginClick }) => {
     const { currentTheme } = useTheme();
     const styles = getHomePageStyles(currentTheme);
@@ -185,7 +185,7 @@ const Footer = () => {
 
 // ------------------ PDF Chat Page and its Children ------------------
 
-// --- NEW: Session History Sidebar ---
+// --- Session History Sidebar ---
 const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId }) => {
     const [sessions, setSessions] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -197,7 +197,6 @@ const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId }) 
             setIsLoading(true);
             try {
                 const response = await axios.get('http://localhost:8000/sessions/');
-                // Sort sessions by timestamp, newest first
                 const sortedSessions = response.data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                 setSessions(sortedSessions);
             } catch (error) {
@@ -207,7 +206,7 @@ const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId }) 
             }
         };
         fetchSessions();
-    }, [activeSessionId]); // Refetch when a new session is created
+    }, [activeSessionId]);
 
     return (
         <div style={styles.historySidebar}>
@@ -236,24 +235,24 @@ const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId }) 
 };
 
 const PdfChatPage = () => {
-  const { currentTheme } = useTheme();
-  const styles = getPdfChatStyles(currentTheme);
+  const styles = getPdfChatStyles(useTheme().currentTheme);
   
-  // State for the entire session
   const [sessionId, setSessionId] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [messages, setMessages] = useState([]);
   
-  // State for the "New Chat" view
   const [pdfs, setPdfs] = useState([]);
   const [selectedPDF, setSelectedPDF] = useState(null);
   const [persona, setPersona] = useState('');
   const [job, setJob] = useState('');
   const [filePromise, setFilePromise] = useState(null);
 
-  // General state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // NEW: State for translated content
+  const [translatedInsights, setTranslatedInsights] = useState(null);
+
 
   const handlePDFSelect = (pdf) => {
     if (selectedPDF?.name !== pdf.name) {
@@ -278,6 +277,8 @@ const PdfChatPage = () => {
 
     setLoading(true);
     setError('');
+    // NEW: Reset translations on new analysis
+    setTranslatedInsights(null);
 
     const formData = new FormData();
     formData.append('persona', persona);
@@ -289,7 +290,6 @@ const PdfChatPage = () => {
             headers: { 'Content-Type': 'multipart/form-data' },
         });
         
-        // NEW: The backend now returns a session ID and the analysis data
         setSessionId(response.data.sessionId);
         setAnalysisResult(response.data.analysis);
         setMessages([{ role: 'bot', content: 'Analysis complete! Here are the key insights.' }]);
@@ -310,7 +310,6 @@ const PdfChatPage = () => {
     setLoading(true);
 
     try {
-        // NEW: Use the /chat endpoint with the session ID
         const response = await axios.post('http://localhost:8000/chat/', {
             sessionId: sessionId,
             query: msg,
@@ -329,6 +328,8 @@ const PdfChatPage = () => {
   const handleSelectSession = async (selectedSessionId) => {
       setLoading(true);
       setError('');
+      // NEW: Reset translations when changing session
+      setTranslatedInsights(null);
       try {
           const response = await axios.get(`http://localhost:8000/sessions/${selectedSessionId}`);
           const sessionData = response.data;
@@ -337,7 +338,6 @@ const PdfChatPage = () => {
           setAnalysisResult(sessionData.analysis);
           setMessages(sessionData.chat_history);
 
-          // Reset new chat form state
           setPdfs([]);
           setSelectedPDF(null);
           setFilePromise(null);
@@ -358,11 +358,11 @@ const PdfChatPage = () => {
       setPersona('');
       setJob('');
       setError('');
+      // NEW: Reset translations
+      setTranslatedInsights(null);
   };
 
   const handleInsightClick = (insight) => {
-      // This function is now less critical as PDFs aren't loaded for past sessions,
-      // but we keep it for the initial analysis view.
       const pdfFile = pdfs.find(p => p.name === insight.document);
       if (pdfFile) {
           setSelectedPDF(pdfFile);
@@ -391,7 +391,6 @@ const PdfChatPage = () => {
             )}
         </div>
         
-        {/* Conditionally render New Chat setup or the active Chat view */}
         {!sessionId && !analysisResult ? (
             <NewChatSetup
                 pdfs={pdfs}
@@ -413,6 +412,11 @@ const PdfChatPage = () => {
                 loading={loading}
                 analysisResult={analysisResult}
                 onInsightClick={handleInsightClick}
+                // NEW: Pass translation state and handler
+                sessionId={sessionId} 
+                translatedInsights={translatedInsights}
+                setTranslatedInsights={setTranslatedInsights}
+                // Pass the sessionId as a prop
             />
         )}
       </div>
@@ -420,7 +424,7 @@ const PdfChatPage = () => {
   );
 };
 
-// --- NEW: Component for the initial "New Chat" screen ---
+// --- Component for the initial "New Chat" screen ---
 const NewChatSetup = ({ pdfs, onFileChange, onSelectPDF, selectedPDF, persona, setPersona, job, setJob, onStartAnalysis, loading, error }) => {
     const { currentTheme } = useTheme();
     const styles = getPdfChatStyles(currentTheme);
@@ -452,8 +456,8 @@ const NewChatSetup = ({ pdfs, onFileChange, onSelectPDF, selectedPDF, persona, s
     );
 };
 
-// --- Reusable and Translatable components (No changes) ---
-const TranslateButton = ({ onSelectLanguage, styles }) => {
+// --- Reusable and Translatable components ---
+const TranslateButton = ({ onSelectLanguage, styles, disabled }) => {
     const [isOpen, setIsOpen] = useState(false);
     const wrapperRef = useRef(null);
     const languages = { "es": "Spanish", "fr": "French", "hi": "Hindi" };
@@ -469,8 +473,8 @@ const TranslateButton = ({ onSelectLanguage, styles }) => {
     }, [wrapperRef]);
 
     return (
-        <div ref={wrapperRef} style={{ position: 'relative', display: 'inline-block', marginLeft: '8px' }}>
-            <button onClick={() => setIsOpen(!isOpen)} style={styles.translateButton} title="Translate text">
+        <div ref={wrapperRef} style={{ position: 'relative', display: 'inline-block' }}>
+            <button onClick={() => setIsOpen(!isOpen)} style={styles.translateButton} title="Translate" disabled={disabled}>
                 <TranslateIcon />
             </button>
             {isOpen && (
@@ -485,6 +489,7 @@ const TranslateButton = ({ onSelectLanguage, styles }) => {
         </div>
     );
 };
+
 const TranslatableItem = ({ text, styles }) => {
     const [currentText, setCurrentText] = useState(text);
     const [isTranslated, setIsTranslated] = useState(false);
@@ -502,7 +507,7 @@ const TranslatableItem = ({ text, styles }) => {
         setError('');
         try {
             const response = await axios.post('http://localhost:8000/translate-text/', {
-                text: text, // always translate original text
+                text: text,
                 target_language: lang
             });
             setCurrentText(response.data.translated_text);
@@ -530,11 +535,12 @@ const TranslatableItem = ({ text, styles }) => {
                 {isTranslated && (
                     <button onClick={showOriginal} style={styles.showOriginalButton}>Original</button>
                 )}
-                <TranslateButton onSelectLanguage={handleTranslate} styles={styles} />
+                <TranslateButton onSelectLanguage={handleTranslate} styles={styles} disabled={isTranslating} />
             </div>
         </li>
     );
 };
+
 const StructuredTextViewer = ({ text }) => {
     const { currentTheme } = useTheme();
     const styles = getPdfChatStyles(currentTheme);
@@ -561,6 +567,7 @@ const StructuredTextViewer = ({ text }) => {
         </div>
     );
 };
+
 const AnimatedBotMessage = ({ message }) => {
     const { displayedText, isDone } = useTypingEffect(message.content);
     const { currentTheme } = useTheme();
@@ -574,8 +581,10 @@ const AnimatedBotMessage = ({ message }) => {
     );
 };
 
-// --- MODIFIED: ChatAndAnalysisSection for active chats ---
-const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResult, onInsightClick }) => {
+// --- ChatAndAnalysisSection for active chats ---
+// In src/App.js
+
+const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResult, onInsightClick, translatedInsights, setTranslatedInsights, sessionId }) => {
   const { currentTheme } = useTheme();
   const styles = getPdfChatStyles(currentTheme);
   const [input, setInput] = useState('');
@@ -584,43 +593,89 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResu
   const [isPodcastLoading, setIsPodcastLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
   const [podcastLanguage, setPodcastLanguage] = useState('en');
+  
+  const [isTranslatingAll, setIsTranslatingAll] = useState(false);
+  const [translationError, setTranslationError] = useState('');
 
   useEffect(() => { 
     if (chatBoxRef.current) chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight; 
-  }, [messages, loading, audioUrl, analysisResult]);
+  }, [messages, loading, audioUrl, analysisResult, translatedInsights]);
 
   const handleSend = () => { if (!input.trim()) return; onSendMessage(input); setInput(''); };
 
-  const handleGeneratePodcast = async () => {
-      if (!analysisResult) return;
-      setIsPodcastLoading(true);
-      setAudioUrl(null);
-      try {
-          const response = await axios.post('http://localhost:8000/generate-podcast/', {
-              analysis_data: analysisResult,
-              language: podcastLanguage
-          }, { responseType: 'blob' });
-          const url = URL.createObjectURL(response.data);
-          setAudioUrl(url);
-      } catch (err) {
-          console.error("Error generating podcast:", err);
-      } finally {
-          setIsPodcastLoading(false);
-      }
+  // HELPER FUNCTION to build the script locally in the browser
+  const buildPodcastScript = (insights, persona, job) => {
+    if (!insights) return "No insights available to generate a script.";
+    let script = `Hello! Here’s your podcast summary for a '${persona}' aiming to '${job}'.\n\n`;
+    const { key_insights = [], did_you_know = [], cross_document_connections = [] } = insights;
+
+    if (key_insights.length > 0) {
+      script += "Key Insights:\n" + key_insights.map(item => `- ${item}`).join('\n') + "\n\n";
+    }
+    if (did_you_know.length > 0) {
+      script += "Did You Know?\n" + did_you_know.map(item => `- ${item}`).join('\n') + "\n\n";
+    }
+    if (cross_document_connections.length > 0) {
+      script += "Connections Across Documents:\n" + cross_document_connections.map(item => `- ${item}`).join('\n') + "\n\n";
+    }
+    script += "That’s all for today’s summary. Thanks for listening!";
+    return script;
   };
+
+  // CORRECTED handler for on-demand Hindi translation
+  const handleTranslateToHindi = async () => {
+    if (!sessionId) return;
+    setIsTranslatingAll(true);
+    setTranslationError('');
+    try {
+        const response = await axios.post('http://localhost:8000/translate-insights/', { sessionId });
+        setTranslatedInsights(response.data.translated_insights);
+    } catch (err) {
+        setTranslationError('Failed to translate insights to Hindi.');
+        console.error("Translation error:", err);
+    } finally {
+        setIsTranslatingAll(false);
+    }
+  };
+  
+  // CORRECTED handler for generating podcasts efficiently
+  // In src/App.js, inside the ChatAndAnalysisSection component
+
+const handleGeneratePodcast = async () => {
+    if (!analysisResult) return;
+    setIsPodcastLoading(true);
+    setAudioUrl(null);
+    try {
+        // This is the corrected part. We are now sending the full
+        // 'analysisResult' object to the backend under the key 'analysis_data'.
+        const response = await axios.post('http://localhost:8000/generate-podcast/', {
+            analysis_data: analysisResult,
+            language: podcastLanguage
+        }, { responseType: 'blob' });
+
+        const url = URL.createObjectURL(response.data);
+        setAudioUrl(url);
+
+    } catch (err) {
+        console.error("Error generating podcast:", err);
+        // You might want to show an error message to the user here
+    } finally {
+        setIsPodcastLoading(false);
+    }
+};
+
+  const displayInsights = translatedInsights || analysisResult?.llm_insights;
 
   return (
     <div style={styles.chatPanel}>
         <div ref={chatBoxRef} style={styles.chatBox}>
             {analysisResult && (
                 <div style={styles.analysisResult}>
-                    {/* Render analysis and insights */}
                     <h4>Initial Insights:</h4>
                      {analysisResult.subsection_analysis.slice(0, 3).map((sub, idx) => (
                         <div key={idx} style={styles.analysisSnippet} onClick={() => onInsightClick(sub)}>
                             <p style={styles.analysisReason}><strong>From {sub.document}:</strong> {sub.reason}</p>
                             <StructuredTextViewer text={sub.refined_text} />
-                            {/* MODIFIED: Added page number display */}
                             <div style={styles.snippetFooter}>
                                 <small>Page: {sub.page_number + 1}</small>
                             </div>
@@ -628,25 +683,41 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResu
                     ))}
                     {analysisResult.llm_insights && (
                         <div style={styles.llmInsightsContainer}>
-                            <h4>Enhanced Insights from Gemini:</h4>
-                            {analysisResult.llm_insights.key_insights?.length > 0 && (
-                                <div style={styles.insightCategory}>
-                                    <h6 style={styles.insightCategoryTitle}>Key Insights</h6>
-                                    <ul>{analysisResult.llm_insights.key_insights.map((item, i) => <TranslatableItem key={i} text={item} styles={styles} />)}</ul>
+                            <div style={styles.insightsHeader}>
+                                <h4>Enhanced Insights from Gemini</h4>
+                                <div style={styles.translateAllContainer}>
+                                    {isTranslatingAll && <span style={{fontSize: '0.9rem', marginRight: '8px'}}>Translating...</span>}
+                                    {translatedInsights ? (
+                                        <button onClick={() => setTranslatedInsights(null)} style={styles.showOriginalButton}>Show Original</button>
+                                     ) : (
+                                        <button onClick={handleTranslateToHindi} style={styles.button} disabled={isTranslatingAll || loading}>
+                                           Translate to Hindi
+                                        </button>
+                                     )}
                                 </div>
-                            )}
-                            {analysisResult.llm_insights.did_you_know?.length > 0 && (
-                                <div style={styles.insightCategory}>
-                                    <h6 style={styles.insightCategoryTitle}>Did You Know?</h6>
-                                    <ul>{analysisResult.llm_insights.did_you_know.map((item, i) => <TranslatableItem key={i} text={item} styles={styles} />)}</ul>
-                                </div>
-                            )}
-                            {/* MODIFIED: Added display for contradictions/connections */}
-                            {analysisResult.llm_insights.cross_document_connections?.length > 0 && (
-                                <div style={styles.insightCategory}>
-                                    <h6 style={styles.insightCategoryTitle}>Connections Across Documents</h6>
-                                    <ul>{analysisResult.llm_insights.cross_document_connections.map((item, i) => <TranslatableItem key={i} text={item} styles={styles} />)}</ul>
-                                </div>
+                            </div>
+                            {translationError && <p style={{color: 'red'}}>{translationError}</p>}
+                            {displayInsights && (
+                                <>
+                                    {displayInsights.key_insights?.length > 0 && (
+                                        <div style={styles.insightCategory}>
+                                            <h6 style={styles.insightCategoryTitle}>Key Insights</h6>
+                                            <ul>{displayInsights.key_insights.map((item, i) => <li key={i}>{item}</li>)}</ul>
+                                        </div>
+                                    )}
+                                    {displayInsights.did_you_know?.length > 0 && (
+                                        <div style={styles.insightCategory}>
+                                            <h6 style={styles.insightCategoryTitle}>Did You Know?</h6>
+                                            <ul>{displayInsights.did_you_know.map((item, i) => <li key={i}>{item}</li>)}</ul>
+                                        </div>
+                                    )}
+                                    {displayInsights.cross_document_connections?.length > 0 && (
+                                        <div style={styles.insightCategory}>
+                                            <h6 style={styles.insightCategoryTitle}>Connections Across Documents</h6>
+                                            <ul>{displayInsights.cross_document_connections.map((item, i) => <li key={i}>{item}</li>)}</ul>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     )}
@@ -654,15 +725,14 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResu
                         <div style={styles.podcastControls}>
                             <button onClick={handleGeneratePodcast} style={styles.button} disabled={isPodcastLoading || loading}>{isPodcastLoading ? 'Generating...' : '🎧 Generate Podcast'}</button>
                             <select value={podcastLanguage} onChange={e => setPodcastLanguage(e.target.value)} style={styles.languageSelector} disabled={isPodcastLoading || loading}>
-                                <option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option><option value="hi">Hindi</option>
+                                <option value="en">English</option>
+                                <option value="hi">Hindi</option>
                             </select>
                         </div>
                         {audioUrl && <audio controls src={audioUrl} style={styles.audioPlayer} />}
                     </div>
                 </div>
             )}
-            
-            {/* Render chat messages */}
             {messages.map((msg, idx) => (
                 msg.role === 'user' ? (
                     <div key={idx} style={{...styles.chatMessage, ...styles.userMessage}}>{msg.content}</div>
@@ -672,7 +742,6 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResu
             ))}
             {loading && <div style={styles.loadingIndicator}>Thinking...</div>}
         </div>
-        
         <div style={styles.chatInputContainer}>
             <input type="text" placeholder="Ask a follow-up..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} style={styles.input} disabled={!analysisResult || loading}/>
             <button onClick={handleSend} style={styles.button} disabled={!analysisResult || loading}>Send</button>
@@ -681,8 +750,7 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResu
   );
 };
 
-
-// --- Theme and Styles Definitions (No Changes) ---
+// --- Theme and Styles Definitions ---
 const themes = {
   light: { background: '#ffffff', text: '#121212', primary: '#e50914', secondary: '#f5f5f1', border: '#e0e0e0', header: '#121212', buttonText: '#ffffff', inputBg: '#f0f0f0', activeItem: '#e50914', activeItemText: '#ffffff', messageBgUser: '#e0e0e0', messageTextUser: '#121212', messageBgBot: '#f5f5f1', messageTextBot: '#121212' },
   dark: { background: '#121212', text: '#ffffff', primary: '#e50914', secondary: '#1c1c1c', border: '#2d2d2d', header: '#ffffff', buttonText: '#ffffff', inputBg: '#2d2d2d', activeItem: '#e50914', activeItemText: '#ffffff', messageBgUser: '#333333', messageTextUser: '#ffffff', messageBgBot: '#2d2d2d', messageTextBot: '#ffffff' },
@@ -697,7 +765,7 @@ const ThemeContextProvider = ({ children }) => {
 };
 const useTheme = () => useContext(ThemeContext);
 
-// --- Main App Router (No Changes) ---
+// --- Main App Router ---
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -781,10 +849,8 @@ const getModalStyles = (theme) => ({
     toggleLink: { color: theme.primary, cursor: 'pointer', fontWeight: 'bold' },
 });
 
-// MODIFIED: Styles for the new layout with history sidebar
 const getPdfChatStyles = (theme) => ({
     appContainer: { display: 'flex', height: 'calc(100vh - 49px)', backgroundColor: theme.background, color: theme.text, fontFamily: "'Segoe UI', Roboto, sans-serif" },
-    // --- History Sidebar Styles ---
     historySidebar: { width: '280px', backgroundColor: theme.secondary, padding: '1rem', borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column' },
     historyHeader: { display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.header, paddingBottom: '1rem', borderBottom: `1px solid ${theme.border}` },
     historyTitle: { margin: 0, fontSize: '1.2rem' },
@@ -795,7 +861,6 @@ const getPdfChatStyles = (theme) => ({
     sessionPersona: { margin: '0 0 0.25rem 0', fontWeight: 'bold' },
     sessionJob: { margin: 0, fontSize: '0.9rem', opacity: 0.8 },
     sessionTimestamp: { margin: '0.5rem 0 0 0', fontSize: '0.8rem', opacity: 0.6 },
-    // --- Main Content Styles ---
     mainContent: { display: 'flex', flexGrow: 1, overflow: 'hidden' },
     viewerPanel: { flex: 0.6, display: 'flex', flexDirection: 'column', backgroundColor: theme.background, position: 'relative', borderRight: `1px solid ${theme.border}` },
     viewerPlaceholder: { flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem', textAlign: 'center', color: theme.text, opacity: 0.7 },
@@ -821,17 +886,20 @@ const getPdfChatStyles = (theme) => ({
     analysisReason: { fontStyle: 'italic', opacity: 0.9, marginBottom: '8px', fontSize: '0.9rem' },
     snippetFooter: { textAlign: 'right', fontSize: '0.8rem', opacity: 0.7, marginTop: '8px' },
     llmInsightsContainer: { marginTop: '1.5rem', padding: '1rem', backgroundColor: theme.secondary, borderRadius: '8px', border: `1px solid ${theme.border}` },
+    // NEW: Styles for the header of the insights section
+    insightsHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' },
+    translateAllContainer: { display: 'flex', alignItems: 'center' },
     insightCategory: { marginBottom: '1rem' },
     insightCategoryTitle: { margin: '0 0 0.5rem 0', color: theme.header, fontWeight: 'bold', fontSize: '1.1rem' },
     podcastContainer: { marginTop: '1.5rem', padding: '1rem', backgroundColor: theme.secondary, borderRadius: '8px', border: `1px solid ${theme.border}` },
     podcastControls: { display: 'flex', gap: '0.5rem', alignItems: 'center' },
     languageSelector: { padding: '0.75rem', backgroundColor: theme.inputBg, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '5px' },
     audioPlayer: { width: '100%', marginTop: '1rem' },
-    translateButton: { background: 'none', border: 'none', cursor: 'pointer', color: theme.text, padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', '&:hover': { backgroundColor: theme.border } },
+    translateButton: { background: 'none', border: 'none', cursor: 'pointer', color: theme.text, padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', '&:hover': { backgroundColor: theme.border } },
     translateDropdown: { position: 'absolute', right: 0, top: '100%', backgroundColor: theme.background, border: `1px solid ${theme.border}`, borderRadius: '4px', zIndex: 10, boxShadow: '0 2px 10px rgba(0,0,0,0.2)' },
     translateDropdownItem: { padding: '8px 12px', cursor: 'pointer', '&:hover': { backgroundColor: theme.inputBg } },
     translatableListItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' },
-    showOriginalButton: { background: 'none', border: `1px solid ${theme.border}`, color: theme.text, cursor: 'pointer', borderRadius: '4px', padding: '2px 6px', fontSize: '0.75rem', marginRight: '4px' },
+    showOriginalButton: { background: 'none', border: `1px solid ${theme.border}`, color: theme.text, cursor: 'pointer', borderRadius: '4px', padding: '2px 6px', fontSize: '0.75rem', marginRight: '8px' },
 });
 
 const AppWrapper = () => (
@@ -841,3 +909,5 @@ const AppWrapper = () => (
 );
 
 export default AppWrapper;
+
+
