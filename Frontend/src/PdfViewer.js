@@ -1,49 +1,65 @@
+// src/PdfViewer.js
+
 import React, { useEffect, useRef } from 'react';
-import { useAdobeSdk } from './useAdobeSdk'; // Import the new custom hook
+import { useAdobeSdk } from './useAdobeSdk';
 
-const PdfViewer = ({ filePromise, fileName }) => {
+const PdfViewer = ({ filePromise, fileName, pageNumber }) => {
   const viewerRef = useRef(null);
-  const isSdkReady = useAdobeSdk(); // Use the hook to know when the SDK is ready
+  const isSdkReady = useAdobeSdk();
+  
+  // This ref will now store the resolved API object itself, not the promise.
+  const apisRef = useRef(null);
 
+  // --- HOOK 1: Handles loading a new file ---
   useEffect(() => {
-    // Do not attempt to render if the SDK isn't ready, if there's no file promise,
-    // or if the viewer div isn't available yet.
-    if (!isSdkReady || !filePromise || !viewerRef.current) {
-      return;
-    }
-
-    // Ensure the Client ID is available before initializing the viewer
-    const clientId = process.env.REACT_APP_ADOBE_CLIENT_ID;
-    if (!clientId) {
-        console.error("Adobe Client ID is missing. Check your .env file and restart the server.");
+    // Only run if the SDK is ready, a file is provided, and the div exists
+    if (isSdkReady && filePromise && viewerRef.current) {
+      const clientId = process.env.REACT_APP_ADOBE_CLIENT_ID;
+      if (!clientId) {
+        console.error("Adobe Client ID is missing.");
         return;
-    }
-
-    const adobeDCView = new window.AdobeDC.View({
-      clientId: clientId,
-      divId: viewerRef.current.id,
-    });
-
-    // previewFile can accept a promise that resolves with the file content
-    adobeDCView.previewFile(
-      {
-        // Pass the promise directly to the content property
-        content: { promise: filePromise },
-        metaData: { fileName: fileName },
-      },
-      {
-        embedMode: 'SIZED_CONTAINER',
-        showAnnotationTools: true,
       }
-    ).catch(error => {
-      console.error("Adobe PDF Viewer could not render the file. This is likely a domain configuration issue in your Adobe Developer Console.", error);
-    });
 
-  }, [isSdkReady, filePromise, fileName]);
+      // Clear the ref when a new file is loaded to prevent using old APIs
+      apisRef.current = null;
+      viewerRef.current.innerHTML = ""; // Clean the div for the new viewer
 
-  // Use a key to help React re-mount the component when the file changes
+      const adobeDCView = new window.AdobeDC.View({
+        clientId: clientId,
+        divId: viewerRef.current.id,
+      });
+
+      const previewFilePromise = adobeDCView.previewFile(
+        {
+          content: { promise: filePromise },
+          metaData: { fileName: fileName },
+        },
+        { embedMode: 'SIZED_CONTAINER' }
+      );
+
+      // After the file loads, get the APIs and store them in the ref
+      previewFilePromise.then(adobeViewer => {
+        adobeViewer.getAPIs().then(apis => {
+          apisRef.current = apis;
+          // Also navigate to the initial page number when the file first loads
+          apis.gotoLocation(pageNumber);
+        });
+      });
+    }
+  }, [isSdkReady, filePromise, fileName]); // This hook only re-runs when the file changes
+
+  // --- HOOK 2: Handles page navigation for an already loaded file ---
+  useEffect(() => {
+    // If the APIs have been loaded and stored in the ref, we can navigate
+    if (apisRef.current) {
+      apisRef.current.gotoLocation(pageNumber)
+        .then(() => console.log(`Successfully navigated to page ${pageNumber}.`))
+        .catch(error => console.error("Error navigating to page:", error));
+    }
+  }, [pageNumber]); // This hook only re-runs when the target page number changes
+
   return (
-    <div key={fileName} ref={viewerRef} id={`adobe-dc-view-${fileName}`} style={{ height: '100%', width: '100%' }} />
+    <div id="adobe-dc-view" ref={viewerRef} style={{ height: '100%' }} />
   );
 };
 

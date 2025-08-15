@@ -1,6 +1,8 @@
+// src/App.js
+
 import React, { useState, createContext, useContext, useEffect, useRef } from 'react';
 import axios from 'axios';
-import PdfViewer from './PdfViewer';
+import PdfViewer from './PdfViewer'; // Import the new, reliable PdfViewer
 
 // --- SVG Icons (re-usable) ---
 const AdobeLogo = ({ color, size }) => (
@@ -13,17 +15,11 @@ const CloseIcon = ({ color }) => (
         <path d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12L19 6.41Z" fill={color}/>
     </svg>
 );
-const TranslateIcon = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12.87 15.07L10.33 12.56L10.36 12.53C12.1 10.59 13.57 8.42 14.73 6H18V4H14V2H12V4H8.07C7.16 5.25 6.35 6.62 5.68 8H3V10H10.25C9.5 11.83 8.5 13.5 7.33 15.07H3V17H7.33C8.5 18.5 9.5 20.17 10.25 22H12.25C11.5 20.17 10.5 18.5 9.33 17H13.33C13.67 16.5 14 16 14.29 15.5C14.58 15 14.83 14.5 15.05 14H19V12H12.87V15.07Z" fill="currentColor"/>
-    </svg>
-);
 const HistoryIcon = () => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M13 3C8.03 3 4 7.03 4 12H1L4.89 15.89L9 12H6C6 8.13 9.13 5 13 5C16.87 5 20 8.13 20 12C20 15.87 16.87 19 13 19C11.07 19 9.32 18.21 8.06 16.94L6.64 18.36C8.27 19.99 10.51 21 13 21C17.97 21 22 16.97 22 12C22 7.03 17.97 3 13 3ZM12 8V13L16.28 15.54L17 14.33L13.5 12.25V8H12Z" fill="currentColor"/>
     </svg>
 );
-
 
 // Custom hook for typing animation
 const useTypingEffect = (textToType, speed = 20) => {
@@ -182,7 +178,6 @@ const Footer = () => {
     );
 };
 
-
 // ------------------ PDF Chat Page and its Children ------------------
 
 // --- Session History Sidebar ---
@@ -218,8 +213,8 @@ const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId }) 
             <div style={styles.sessionList}>
                 {isLoading ? <p>Loading history...</p> :
                     sessions.map(session => (
-                        <div 
-                            key={session.id} 
+                        <div
+                            key={session.id}
                             onClick={() => onSelectSession(session.id)}
                             style={{...styles.sessionItem, ...(session.id === activeSessionId && styles.activeSessionItem)}}
                         >
@@ -235,193 +230,186 @@ const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId }) 
 };
 
 const PdfChatPage = () => {
-  const styles = getPdfChatStyles(useTheme().currentTheme);
-  
-  const [sessionId, setSessionId] = useState(null);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [messages, setMessages] = useState([]);
-  
-  const [pdfs, setPdfs] = useState([]);
-  const [selectedPDF, setSelectedPDF] = useState(null);
-  const [persona, setPersona] = useState('');
-  const [job, setJob] = useState('');
-  const [filePromise, setFilePromise] = useState(null);
+    const styles = getPdfChatStyles(useTheme().currentTheme);
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  
-  // NEW: State for translated content
-  const [translatedInsights, setTranslatedInsights] = useState(null);
+    const [sessionId, setSessionId] = useState(null);
+    const [analysisResult, setAnalysisResult] = useState(null);
+    const [messages, setMessages] = useState([]);
 
+    const [pdfs, setPdfs] = useState([]);
+    const [selectedPDF, setSelectedPDF] = useState(null);
+    const [persona, setPersona] = useState('');
+    const [job, setJob] = useState('');
+    const [filePromise, setFilePromise] = useState(null);
+    const [targetPage, setTargetPage] = useState(1);
 
-  const handlePDFSelect = (pdf) => {
-    if (selectedPDF?.name !== pdf.name) {
-        setSelectedPDF(pdf);
-        setFilePromise(pdf.arrayBuffer());
-    }
-  };
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [translatedInsights, setTranslatedInsights] = useState(null);
 
-  const handleFileChange = (event) => {
-      const files = Array.from(event.target.files);
-      const newPdfs = files.filter(file => 
-          file.type === 'application/pdf' && !pdfs.some(p => p.name === file.name)
-      );
-      setPdfs(prev => [...prev, ...newPdfs]);
-  };
-  
-  const handleStartAnalysis = async () => {
-    if (pdfs.length === 0 || !persona || !job) {
-        setError('Please upload PDFs and fill out both Persona and Job fields.');
-        return;
-    }
+    const handlePDFSelect = (pdf) => {
+        if (selectedPDF?.name !== pdf.name) {
+            setSelectedPDF(pdf);
+            setFilePromise(pdf.arrayBuffer());
+            setTargetPage(1);
+        }
+    };
 
-    setLoading(true);
-    setError('');
-    // NEW: Reset translations on new analysis
-    setTranslatedInsights(null);
+    const handleFileChange = (event) => {
+        const files = Array.from(event.target.files);
+        const newPdfs = files.filter(file =>
+            file.type === 'application/pdf' && !pdfs.some(p => p.name === file.name)
+        );
+        setPdfs(prev => [...prev, ...newPdfs]);
+    };
 
-    const formData = new FormData();
-    formData.append('persona', persona);
-    formData.append('job_to_be_done', job);
-    pdfs.forEach(pdfFile => formData.append('files', pdfFile));
+    const handleStartAnalysis = async () => {
+        if (pdfs.length === 0 || !persona || !job) {
+            setError('Please upload PDFs and fill out both Persona and Job fields.');
+            return;
+        }
 
-    try {
-        const response = await axios.post('http://localhost:8000/analyze/', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        
-        setSessionId(response.data.sessionId);
-        setAnalysisResult(response.data.analysis);
-        setMessages([{ role: 'bot', content: 'Analysis complete! Here are the key insights.' }]);
+        setLoading(true);
+        setError('');
+        setTranslatedInsights(null);
 
-    } catch (err) {
-        const errorMessage = err.response?.data?.detail || 'An unexpected error occurred during analysis.';
-        setError(errorMessage);
-    } finally {
-        setLoading(false);
-    }
-  };
-  
-  const handleSendQuery = async (msg) => {
-    if (!sessionId) return;
-    
-    const userMsg = { role: 'user', content: msg };
-    setMessages(prev => [...prev, userMsg]);
-    setLoading(true);
+        const formData = new FormData();
+        formData.append('persona', persona);
+        formData.append('job_to_be_done', job);
+        pdfs.forEach(pdfFile => formData.append('files', pdfFile));
 
-    try {
-        const response = await axios.post('http://localhost:8000/chat/', {
-            sessionId: sessionId,
-            query: msg,
-        });
-        
-        setMessages(prev => [...prev, response.data]);
+        try {
+            const response = await axios.post('http://localhost:8000/analyze/', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
 
-    } catch (err) {
-        const errorMessage = err.response?.data?.detail || 'Failed to get a response.';
-        setMessages(prev => [...prev, { role: 'bot', content: `Error: ${errorMessage}` }]);
-    } finally {
-        setLoading(false);
-    }
-  };
+            setSessionId(response.data.sessionId);
+            setAnalysisResult(response.data.analysis);
+            setMessages([{ role: 'bot', content: 'Analysis complete! Here are the key insights.' }]);
 
-  const handleSelectSession = async (selectedSessionId) => {
-      setLoading(true);
-      setError('');
-      // NEW: Reset translations when changing session
-      setTranslatedInsights(null);
-      try {
-          const response = await axios.get(`http://localhost:8000/sessions/${selectedSessionId}`);
-          const sessionData = response.data;
-          
-          setSessionId(selectedSessionId);
-          setAnalysisResult(sessionData.analysis);
-          setMessages(sessionData.chat_history);
+        } catch (err) {
+            const errorMessage = err.response?.data?.detail || 'An unexpected error occurred during analysis.';
+            setError(errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-          setPdfs([]);
-          setSelectedPDF(null);
-          setFilePromise(null);
+    const handleSendQuery = async (msg) => {
+        if (!sessionId) return;
+        const userMsg = { role: 'user', content: msg };
+        setMessages(prev => [...prev, userMsg]);
+        setLoading(true);
+        try {
+            const response = await axios.post('http://localhost:8000/chat/', {
+                sessionId: sessionId,
+                query: msg,
+            });
+            setMessages(prev => [...prev, response.data]);
+        } catch (err) {
+            const errorMessage = err.response?.data?.detail || 'Failed to get a response.';
+            setMessages(prev => [...prev, { role: 'bot', content: `Error: ${errorMessage}` }]);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-      } catch (err) {
-          setError("Failed to load session.");
-      } finally {
-          setLoading(false);
-      }
-  };
-  
-  const handleNewChat = () => {
-      setSessionId(null);
-      setAnalysisResult(null);
-      setMessages([]);
-      setPdfs([]);
-      setSelectedPDF(null);
-      setPersona('');
-      setJob('');
-      setError('');
-      // NEW: Reset translations
-      setTranslatedInsights(null);
-  };
+    const handleSelectSession = async (selectedSessionId) => {
+        setLoading(true);
+        setError('');
+        setTranslatedInsights(null);
+        try {
+            const response = await axios.get(`http://localhost:8000/sessions/${selectedSessionId}`);
+            const sessionData = response.data;
+            setSessionId(selectedSessionId);
+            setAnalysisResult(sessionData.analysis);
+            setMessages(sessionData.chat_history);
+            setPdfs([]);
+            setSelectedPDF(null);
+            setFilePromise(null);
+        } catch (err) {
+            setError("Failed to load session.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
-  const handleInsightClick = (insight) => {
-      const pdfFile = pdfs.find(p => p.name === insight.document);
-      if (pdfFile) {
-          setSelectedPDF(pdfFile);
-          setFilePromise(pdfFile.arrayBuffer());
-      }
-  };
+    const handleNewChat = () => {
+        setSessionId(null);
+        setAnalysisResult(null);
+        setMessages([]);
+        setPdfs([]);
+        setSelectedPDF(null);
+        setPersona('');
+        setJob('');
+        setError('');
+        setTranslatedInsights(null);
+    };
 
-  return (
-    <div style={styles.appContainer}>
-      <SessionHistorySidebar 
-          onSelectSession={handleSelectSession} 
-          onNewChat={handleNewChat}
-          activeSessionId={sessionId}
-      />
-      <div style={styles.mainContent}>
-        <div style={styles.viewerPanel}>
-            {filePromise ? (
-                <PdfViewer 
-                    filePromise={filePromise} 
-                    fileName={selectedPDF ? selectedPDF.name : 'document.pdf'} 
-                />
-            ) : (
-                <div style={styles.viewerPlaceholder}>
-                    <p>{sessionId ? "PDF viewer is disabled for past sessions. Start a new chat to view PDFs." : "Select a PDF to view it here."}</p>
+    const handleInsightClick = (insight) => {
+        const pdfFile = pdfs.find(p => p.name === insight.document);
+        if (pdfFile) {
+            // If the PDF is not already selected, update it
+            if (selectedPDF?.name !== pdfFile.name) {
+                setSelectedPDF(pdfFile);
+                setFilePromise(pdfFile.arrayBuffer());
+            }
+            // Always update the target page to trigger the navigation
+            setTargetPage(insight.page_number || 1);
+        }
+    };
+
+    return (
+        <div style={styles.appContainer}>
+            <SessionHistorySidebar
+                onSelectSession={handleSelectSession}
+                onNewChat={handleNewChat}
+                activeSessionId={sessionId}
+            />
+            <div style={styles.mainContent}>
+                <div style={styles.viewerPanel}>
+                    {filePromise ? (
+                        <PdfViewer
+                            filePromise={filePromise}
+                            fileName={selectedPDF.name}
+                            pageNumber={targetPage}
+                        />
+                    ) : (
+                        <div style={styles.viewerPlaceholder}>
+                            <p>{sessionId ? "PDF viewer is disabled for past sessions." : "Select a PDF to view it here."}</p>
+                        </div>
+                    )}
                 </div>
-            )}
+
+                {!sessionId && !analysisResult ? (
+                    <NewChatSetup
+                        pdfs={pdfs}
+                        onFileChange={handleFileChange}
+                        onSelectPDF={handlePDFSelect}
+                        selectedPDF={selectedPDF}
+                        persona={persona}
+                        setPersona={setPersona}
+                        job={job}
+                        setJob={setJob}
+                        onStartAnalysis={handleStartAnalysis}
+                        loading={loading}
+                        error={error}
+                    />
+                ) : (
+                    <ChatAndAnalysisSection
+                        messages={messages}
+                        onSendMessage={handleSendQuery}
+                        loading={loading}
+                        analysisResult={analysisResult}
+                        onInsightClick={handleInsightClick}
+                        sessionId={sessionId}
+                        translatedInsights={translatedInsights}
+                        setTranslatedInsights={setTranslatedInsights}
+                    />
+                )}
+            </div>
         </div>
-        
-        {!sessionId && !analysisResult ? (
-            <NewChatSetup
-                pdfs={pdfs}
-                onFileChange={handleFileChange}
-                onSelectPDF={handlePDFSelect}
-                selectedPDF={selectedPDF}
-                persona={persona}
-                setPersona={setPersona}
-                job={job}
-                setJob={setJob}
-                onStartAnalysis={handleStartAnalysis}
-                loading={loading}
-                error={error}
-            />
-        ) : (
-            <ChatAndAnalysisSection
-                messages={messages}
-                onSendMessage={handleSendQuery}
-                loading={loading}
-                analysisResult={analysisResult}
-                onInsightClick={handleInsightClick}
-                // NEW: Pass translation state and handler
-                sessionId={sessionId} 
-                translatedInsights={translatedInsights}
-                setTranslatedInsights={setTranslatedInsights}
-                // Pass the sessionId as a prop
-            />
-        )}
-      </div>
-    </div>
-  );
+    );
 };
 
 // --- Component for the initial "New Chat" screen ---
@@ -456,118 +444,6 @@ const NewChatSetup = ({ pdfs, onFileChange, onSelectPDF, selectedPDF, persona, s
     );
 };
 
-// --- Reusable and Translatable components ---
-const TranslateButton = ({ onSelectLanguage, styles, disabled }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const wrapperRef = useRef(null);
-    const languages = { "es": "Spanish", "fr": "French", "hi": "Hindi" };
-
-    useEffect(() => {
-        function handleClickOutside(event) {
-            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-                setIsOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [wrapperRef]);
-
-    return (
-        <div ref={wrapperRef} style={{ position: 'relative', display: 'inline-block' }}>
-            <button onClick={() => setIsOpen(!isOpen)} style={styles.translateButton} title="Translate" disabled={disabled}>
-                <TranslateIcon />
-            </button>
-            {isOpen && (
-                <div style={styles.translateDropdown}>
-                    {Object.entries(languages).map(([code, name]) => (
-                        <div key={code} onClick={() => { onSelectLanguage(code); setIsOpen(false); }} style={styles.translateDropdownItem}>
-                            {name}
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-};
-
-const TranslatableItem = ({ text, styles }) => {
-    const [currentText, setCurrentText] = useState(text);
-    const [isTranslated, setIsTranslated] = useState(false);
-    const [isTranslating, setIsTranslating] = useState(false);
-    const [error, setError] = useState('');
-
-    useEffect(() => {
-        setCurrentText(text);
-        setIsTranslated(false);
-        setError('');
-    }, [text]);
-
-    const handleTranslate = async (lang) => {
-        setIsTranslating(true);
-        setError('');
-        try {
-            const response = await axios.post('http://localhost:8000/translate-text/', {
-                text: text,
-                target_language: lang
-            });
-            setCurrentText(response.data.translated_text);
-            setIsTranslated(true);
-        } catch (err) {
-            setError("Translation failed.");
-        } finally {
-            setIsTranslating(false);
-        }
-    };
-
-    const showOriginal = () => {
-        setCurrentText(text);
-        setIsTranslated(false);
-        setError('');
-    };
-
-    return (
-        <li style={styles.translatableListItem}>
-            <span>
-                {isTranslating ? 'Translating...' : currentText}
-                {error && <span style={{color: 'red', marginLeft: '8px'}}>{error}</span>}
-            </span>
-            <div style={{marginLeft: 'auto', display: 'flex', alignItems: 'center'}}>
-                {isTranslated && (
-                    <button onClick={showOriginal} style={styles.showOriginalButton}>Original</button>
-                )}
-                <TranslateButton onSelectLanguage={handleTranslate} styles={styles} disabled={isTranslating} />
-            </div>
-        </li>
-    );
-};
-
-const StructuredTextViewer = ({ text }) => {
-    const { currentTheme } = useTheme();
-    const styles = getPdfChatStyles(currentTheme);
-    const lines = text.split('\n').filter(line => line.trim() !== '');
-
-    return (
-        <div style={styles.analysisTextContainer}>
-            {lines.map((line, index) => {
-                const isListItem = /^\s*[\u2022*-]/.test(line);
-                if (isListItem) {
-                    return (
-                        <div key={index} style={styles.structuredListItem}>
-                           <span style={styles.bulletPoint}>•</span>
-                           <span>{line.replace(/^\s*[\u2022*-]\s*/, '').trim()}</span>
-                        </div>
-                    );
-                }
-                const isSubheading = line.length < 60 && !line.endsWith('.') && !line.endsWith(':');
-                if (isSubheading) {
-                     return <p key={index} style={styles.structuredSubheading}>{line.trim()}</p>
-                }
-                return <p key={index} style={styles.structuredParagraph}>{line.trim()}</p>;
-            })}
-        </div>
-    );
-};
-
 const AnimatedBotMessage = ({ message }) => {
     const { displayedText, isDone } = useTypingEffect(message.content);
     const { currentTheme } = useTheme();
@@ -582,47 +458,25 @@ const AnimatedBotMessage = ({ message }) => {
 };
 
 // --- ChatAndAnalysisSection for active chats ---
-// In src/App.js
-
 const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResult, onInsightClick, translatedInsights, setTranslatedInsights, sessionId }) => {
   const { currentTheme } = useTheme();
   const styles = getPdfChatStyles(currentTheme);
   const [input, setInput] = useState('');
   const chatBoxRef = useRef(null);
-  
+
   const [isPodcastLoading, setIsPodcastLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
   const [podcastLanguage, setPodcastLanguage] = useState('en');
-  
+
   const [isTranslatingAll, setIsTranslatingAll] = useState(false);
   const [translationError, setTranslationError] = useState('');
 
-  useEffect(() => { 
-    if (chatBoxRef.current) chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight; 
+  useEffect(() => {
+    if (chatBoxRef.current) chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight;
   }, [messages, loading, audioUrl, analysisResult, translatedInsights]);
 
   const handleSend = () => { if (!input.trim()) return; onSendMessage(input); setInput(''); };
 
-  // HELPER FUNCTION to build the script locally in the browser
-  const buildPodcastScript = (insights, persona, job) => {
-    if (!insights) return "No insights available to generate a script.";
-    let script = `Hello! Here’s your podcast summary for a '${persona}' aiming to '${job}'.\n\n`;
-    const { key_insights = [], did_you_know = [], cross_document_connections = [] } = insights;
-
-    if (key_insights.length > 0) {
-      script += "Key Insights:\n" + key_insights.map(item => `- ${item}`).join('\n') + "\n\n";
-    }
-    if (did_you_know.length > 0) {
-      script += "Did You Know?\n" + did_you_know.map(item => `- ${item}`).join('\n') + "\n\n";
-    }
-    if (cross_document_connections.length > 0) {
-      script += "Connections Across Documents:\n" + cross_document_connections.map(item => `- ${item}`).join('\n') + "\n\n";
-    }
-    script += "That’s all for today’s summary. Thanks for listening!";
-    return script;
-  };
-
-  // CORRECTED handler for on-demand Hindi translation
   const handleTranslateToHindi = async () => {
     if (!sessionId) return;
     setIsTranslatingAll(true);
@@ -637,17 +491,12 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResu
         setIsTranslatingAll(false);
     }
   };
-  
-  // CORRECTED handler for generating podcasts efficiently
-  // In src/App.js, inside the ChatAndAnalysisSection component
 
-const handleGeneratePodcast = async () => {
+  const handleGeneratePodcast = async () => {
     if (!analysisResult) return;
     setIsPodcastLoading(true);
     setAudioUrl(null);
     try {
-        // This is the corrected part. We are now sending the full
-        // 'analysisResult' object to the backend under the key 'analysis_data'.
         const response = await axios.post('http://localhost:8000/generate-podcast/', {
             analysis_data: analysisResult,
             language: podcastLanguage
@@ -658,12 +507,12 @@ const handleGeneratePodcast = async () => {
 
     } catch (err) {
         console.error("Error generating podcast:", err);
-        // You might want to show an error message to the user here
     } finally {
         setIsPodcastLoading(false);
     }
-};
+  };
 
+  // Use translated insights if available, otherwise fall back to original
   const displayInsights = translatedInsights || analysisResult?.llm_insights;
 
   return (
@@ -672,15 +521,16 @@ const handleGeneratePodcast = async () => {
             {analysisResult && (
                 <div style={styles.analysisResult}>
                     <h4>Initial Insights:</h4>
-                     {analysisResult.subsection_analysis.slice(0, 3).map((sub, idx) => (
-                        <div key={idx} style={styles.analysisSnippet} onClick={() => onInsightClick(sub)}>
-                            <p style={styles.analysisReason}><strong>From {sub.document}:</strong> {sub.reason}</p>
-                            <StructuredTextViewer text={sub.refined_text} />
-                            <div style={styles.snippetFooter}>
-                                <small>Page: {sub.page_number + 1}</small>
-                            </div>
-                        </div>
-                    ))}
+                      {analysisResult.top_sections?.slice(0, 3).map((section, idx) => (
+                          <div key={idx} style={styles.analysisSnippet} onClick={() => onInsightClick(section)}>
+                              <p style={styles.analysisReason}><strong>From {section.document}:</strong> {section.reasoning}</p>
+                              <p style={styles.sectionTitleText}>Section: "{section.section_title}"</p>
+                              <div style={styles.snippetFooter}>
+                                  <small>Page: {section.page_number > 0 ? section.page_number : 'N/A'}</small>
+                              </div>
+                          </div>
+                      ))}
+
                     {analysisResult.llm_insights && (
                         <div style={styles.llmInsightsContainer}>
                             <div style={styles.insightsHeader}>
@@ -689,11 +539,11 @@ const handleGeneratePodcast = async () => {
                                     {isTranslatingAll && <span style={{fontSize: '0.9rem', marginRight: '8px'}}>Translating...</span>}
                                     {translatedInsights ? (
                                         <button onClick={() => setTranslatedInsights(null)} style={styles.showOriginalButton}>Show Original</button>
-                                     ) : (
+                                    ) : (
                                         <button onClick={handleTranslateToHindi} style={styles.button} disabled={isTranslatingAll || loading}>
-                                           Translate to Hindi
+                                            Translate to Hindi
                                         </button>
-                                     )}
+                                    )}
                                 </div>
                             </div>
                             {translationError && <p style={{color: 'red'}}>{translationError}</p>}
@@ -803,8 +653,8 @@ function App() {
               @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
           `}</style>
           <LoginModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onLogin={handleLogin} />
-          <AppNavbar 
-              onNavigate={setCurrentPage} 
+          <AppNavbar
+              onNavigate={setCurrentPage}
               toggleTheme={useTheme().toggleTheme}
               isLoggedIn={isLoggedIn}
               onLogout={handleLogout}
@@ -884,9 +734,9 @@ const getPdfChatStyles = (theme) => ({
     analysisResult: { padding: '0.5rem', backgroundColor: theme.background, borderRadius: '8px', marginBottom: '1rem' },
     analysisSnippet: { borderLeft: `3px solid ${theme.primary}`, padding: '10px', margin: '10px 0', backgroundColor: theme.inputBg, borderRadius: '4px', cursor: 'pointer', opacity: 0, animation: 'fadeIn 0.5s forwards' },
     analysisReason: { fontStyle: 'italic', opacity: 0.9, marginBottom: '8px', fontSize: '0.9rem' },
+    sectionTitleText: { fontWeight: 'bold', margin: '0 0 8px 0' }, // New style for the section title
     snippetFooter: { textAlign: 'right', fontSize: '0.8rem', opacity: 0.7, marginTop: '8px' },
     llmInsightsContainer: { marginTop: '1.5rem', padding: '1rem', backgroundColor: theme.secondary, borderRadius: '8px', border: `1px solid ${theme.border}` },
-    // NEW: Styles for the header of the insights section
     insightsHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' },
     translateAllContainer: { display: 'flex', alignItems: 'center' },
     insightCategory: { marginBottom: '1rem' },
@@ -895,10 +745,6 @@ const getPdfChatStyles = (theme) => ({
     podcastControls: { display: 'flex', gap: '0.5rem', alignItems: 'center' },
     languageSelector: { padding: '0.75rem', backgroundColor: theme.inputBg, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '5px' },
     audioPlayer: { width: '100%', marginTop: '1rem' },
-    translateButton: { background: 'none', border: 'none', cursor: 'pointer', color: theme.text, padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', '&:hover': { backgroundColor: theme.border } },
-    translateDropdown: { position: 'absolute', right: 0, top: '100%', backgroundColor: theme.background, border: `1px solid ${theme.border}`, borderRadius: '4px', zIndex: 10, boxShadow: '0 2px 10px rgba(0,0,0,0.2)' },
-    translateDropdownItem: { padding: '8px 12px', cursor: 'pointer', '&:hover': { backgroundColor: theme.inputBg } },
-    translatableListItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' },
     showOriginalButton: { background: 'none', border: `1px solid ${theme.border}`, color: theme.text, cursor: 'pointer', borderRadius: '4px', padding: '2px 6px', fontSize: '0.75rem', marginRight: '8px' },
 });
 
@@ -909,5 +755,3 @@ const AppWrapper = () => (
 );
 
 export default AppWrapper;
-
-
