@@ -3,16 +3,12 @@
 import React, { useEffect, useRef } from 'react';
 import { useAdobeSdk } from './useAdobeSdk';
 
-const PdfViewer = ({ filePromise, fileName, pageNumber }) => {
+const PdfViewer = ({ filePromise, fileName, pageNumber, onTextSelect }) => {
   const viewerRef = useRef(null);
   const isSdkReady = useAdobeSdk();
-  
-  // This ref will now store the resolved API object itself, not the promise.
   const apisRef = useRef(null);
 
-  // --- HOOK 1: Handles loading a new file ---
   useEffect(() => {
-    // Only run if the SDK is ready, a file is provided, and the div exists
     if (isSdkReady && filePromise && viewerRef.current) {
       const clientId = process.env.REACT_APP_ADOBE_CLIENT_ID;
       if (!clientId) {
@@ -20,9 +16,8 @@ const PdfViewer = ({ filePromise, fileName, pageNumber }) => {
         return;
       }
 
-      // Clear the ref when a new file is loaded to prevent using old APIs
       apisRef.current = null;
-      viewerRef.current.innerHTML = ""; // Clean the div for the new viewer
+      viewerRef.current.innerHTML = "";
 
       const adobeDCView = new window.AdobeDC.View({
         clientId: clientId,
@@ -37,29 +32,60 @@ const PdfViewer = ({ filePromise, fileName, pageNumber }) => {
         { embedMode: 'SIZED_CONTAINER' }
       );
 
-      // After the file loads, get the APIs and store them in the ref
       previewFilePromise.then(adobeViewer => {
         adobeViewer.getAPIs().then(apis => {
           apisRef.current = apis;
-          // Also navigate to the initial page number when the file first loads
           apis.gotoLocation(pageNumber);
         });
       });
     }
-  }, [isSdkReady, filePromise, fileName]); // This hook only re-runs when the file changes
+  }, [isSdkReady, filePromise, fileName]);
 
-  // --- HOOK 2: Handles page navigation for an already loaded file ---
   useEffect(() => {
-    // If the APIs have been loaded and stored in the ref, we can navigate
     if (apisRef.current) {
       apisRef.current.gotoLocation(pageNumber)
         .then(() => console.log(`Successfully navigated to page ${pageNumber}.`))
         .catch(error => console.error("Error navigating to page:", error));
     }
-  }, [pageNumber]); // This hook only re-runs when the target page number changes
+  }, [pageNumber]);
+
+  const handleGetSelectedText = () => {
+    if (apisRef.current) {
+        apisRef.current.getSelectedContent()
+            .then(result => {
+                if (result && result.type === 'text' && result.data) {
+                    onTextSelect(result.data);
+                } else {
+                    alert('No text selected. Please select some text in the PDF to get insights.');
+                }
+            })
+            .catch(error => console.error("Error getting selected content:", error));
+    }
+  };
 
   return (
-    <div id="adobe-dc-view" ref={viewerRef} style={{ height: '100%' }} />
+    <div style={{ height: '100%', position: 'relative' }}>
+      <div id="adobe-dc-view" ref={viewerRef} style={{ height: '100%' }} />
+      <button
+        onClick={handleGetSelectedText}
+        style={{
+            position: 'absolute',
+            bottom: '20px',
+            right: '20px',
+            zIndex: 10,
+            padding: '10px 15px',
+            backgroundColor: '#e50914',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+        }}
+      >
+        Get Insights on Selection
+      </button>
+    </div>
   );
 };
 

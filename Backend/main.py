@@ -44,11 +44,14 @@ class PodcastRequest(BaseModel):
 class TranslateInsightsRequest(BaseModel):
     sessionId: str
 
+class SelectionInsightsRequest(BaseModel):
+    text: str
+
 # --- Initialize FastAPI App ---
 app = FastAPI(
     title="PDF Intelligence API",
     description="API for persona-driven PDF analysis, chat, and multi-language audio summaries, powered by Gemini 1.5 Flash.",
-    version="2.4.0" # Version bump for improved insights
+    version="2.5.1" # Version bump for bug fix
 )
 
 # --- Add CORS Middleware ---
@@ -305,6 +308,54 @@ async def chat_with_documents(request: ChatRequest):
     add_message_to_history(request.sessionId, bot_message)
     return JSONResponse(content=bot_message)
 
+# --- CORRECTED ENDPOINT for Selected Text Insights ---
+@app.post("/insights-on-selection")
+async def get_insights_on_selection(request: SelectionInsightsRequest):
+    """
+    Generates insights on a specific piece of selected text.
+    """
+    prompt = f"""
+    You are an expert research assistant. Your task is to analyze the provided documents and deliver a structured analysis of related sections and subsections across all the documents.
+
+    **Instructions:**
+    1.  **Identify Core Themes:** Read through the documents to identify the main themes or topics that connect different sections.
+    2.  **Group and Analyze:** For each theme, group together all the relevant sections and subsections from the documents.
+    3.  **Provide a Cohesive Summary:** Synthesize the information from the grouped sections into a concise analysis that explains the theme and how the different sections relate to it.
+
+    **Text for Analysis:**
+    ---
+    {request.text}
+    ---
+
+    Respond ONLY with a single JSON object with the keys "summary", "key_takeaways" (as an array of strings), and "potential_questions" (as an array of strings). Do not include any other text or markdown.
+    """
+
+    json_schema = {
+        "type": "OBJECT",
+        "properties": {
+            "summary": {"type": "STRING"},
+            "key_takeaways": {"type": "ARRAY", "items": {"type": "STRING"}},
+            "potential_questions": {"type": "ARRAY", "items": {"type": "STRING"}}
+        },
+        "required": ["summary", "key_takeaways", "potential_questions"]
+    }
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"responseMimeType": "application/json", "responseSchema": json_schema}
+    }
+
+    try:
+        response_json = await call_gemini_api(payload)
+        insights = json.loads(response_json['candidates'][0]['content']['parts'][0]['text'])
+        print(insights)
+        return JSONResponse(content=insights)
+
+    except Exception as e:
+        print(f"ERROR: Failed to generate insights on selection: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate insights: {e}")
+
+
 @app.get("/sessions/")
 async def get_sessions_list():
     metadata = get_all_sessions_metadata()
@@ -441,4 +492,3 @@ def text_to_speech_offline(text: str, output_filename: str):
 @app.get("/")
 def read_root():
     return {"status": "ok", "version": app.version}
-

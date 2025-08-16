@@ -247,6 +247,12 @@ const PdfChatPage = () => {
     const [error, setError] = useState('');
     const [translatedInsights, setTranslatedInsights] = useState(null);
 
+    // --- NEW STATE for selection insights ---
+    const [selectionInsights, setSelectionInsights] = useState(null);
+    const [isSelectionLoading, setIsSelectionLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState('analysis'); // 'analysis' or 'selection'
+
+
     const handlePDFSelect = (pdf) => {
         if (selectedPDF?.name !== pdf.name) {
             setSelectedPDF(pdf);
@@ -344,20 +350,41 @@ const PdfChatPage = () => {
         setJob('');
         setError('');
         setTranslatedInsights(null);
+        setSelectionInsights(null); // Reset on new chat
+        setActiveTab('analysis');
     };
 
     const handleInsightClick = (insight) => {
         const pdfFile = pdfs.find(p => p.name === insight.document);
         if (pdfFile) {
-            // If the PDF is not already selected, update it
             if (selectedPDF?.name !== pdfFile.name) {
                 setSelectedPDF(pdfFile);
                 setFilePromise(pdfFile.arrayBuffer());
             }
-            // Always update the target page to trigger the navigation
             setTargetPage(insight.page_number || 1);
         }
     };
+
+    // --- NEW FUNCTION to handle text selection ---
+    const handleTextSelect = async (selectedText) => {
+        if (!selectedText || isSelectionLoading) return;
+        setIsSelectionLoading(true);
+        setSelectionInsights(null);
+        setActiveTab('selection'); // Switch to selection tab
+
+        try {
+            const response = await axios.post('http://localhost:8000/insights-on-selection', {
+                text: selectedText,
+            });
+            setSelectionInsights(response.data);
+        } catch (err) {
+            console.error("Failed to get insights on selection:", err);
+            // You can set an error state here to show in the UI
+        } finally {
+            setIsSelectionLoading(false);
+        }
+    };
+
 
     return (
         <div style={styles.appContainer}>
@@ -368,11 +395,12 @@ const PdfChatPage = () => {
             />
             <div style={styles.mainContent}>
                 <div style={styles.viewerPanel}>
-                    {filePromise ? (
+                    {filePromise && selectedPDF ? ( // ERROR FIX: Ensure selectedPDF is not null
                         <PdfViewer
                             filePromise={filePromise}
-                            fileName={selectedPDF.name}
+                            fileName={selectedPDF.name} // This line is now safe
                             pageNumber={targetPage}
+                            onTextSelect={handleTextSelect}
                         />
                     ) : (
                         <div style={styles.viewerPlaceholder}>
@@ -394,6 +422,10 @@ const PdfChatPage = () => {
                         onStartAnalysis={handleStartAnalysis}
                         loading={loading}
                         error={error}
+                        selectionInsights={selectionInsights}
+                        isSelectionLoading={isSelectionLoading}
+                        activeTab={activeTab}
+                        setActiveTab={setActiveTab}
                     />
                 ) : (
                     <ChatAndAnalysisSection
@@ -405,6 +437,11 @@ const PdfChatPage = () => {
                         sessionId={sessionId}
                         translatedInsights={translatedInsights}
                         setTranslatedInsights={setTranslatedInsights}
+                        // --- Pass new props down ---
+                        selectionInsights={selectionInsights}
+                        isSelectionLoading={isSelectionLoading}
+                        activeTab={activeTab}
+                        setActiveTab={setActiveTab}
                     />
                 )}
             </div>
@@ -413,36 +450,90 @@ const PdfChatPage = () => {
 };
 
 // --- Component for the initial "New Chat" screen ---
-const NewChatSetup = ({ pdfs, onFileChange, onSelectPDF, selectedPDF, persona, setPersona, job, setJob, onStartAnalysis, loading, error }) => {
+const NewChatSetup = ({
+    pdfs, onFileChange, onSelectPDF, selectedPDF, persona, setPersona, job, setJob, onStartAnalysis, loading, error,
+    selectionInsights, isSelectionLoading, activeTab, setActiveTab
+}) => {
     const { currentTheme } = useTheme();
     const styles = getPdfChatStyles(currentTheme);
 
     return (
         <div style={styles.chatPanel}>
-            <h3 style={styles.sidebarTitle}>Start a New Analysis</h3>
-            <div style={styles.chatControls}>
-                <label htmlFor="file-upload" style={styles.uploadButton}>Upload PDFs</label>
-                <input id="file-upload" type="file" accept="application/pdf" multiple onChange={onFileChange} style={{ display: 'none' }}/>
-                <div style={styles.pdfList}>
-                    {pdfs.map((pdf) => (
-                        <button key={pdf.name} onClick={() => onSelectPDF(pdf)} style={{...styles.pdfListItem, ...(selectedPDF?.name === pdf.name && styles.activePdfListItem)}}>
-                            {pdf.name}
-                        </button>
-                    ))}
-                </div>
-                <input type="text" placeholder="Persona (e.g., 'a legal expert')" value={persona} onChange={(e) => setPersona(e.target.value)} style={styles.input}/>
-                <textarea placeholder="Job to be done (e.g., 'summarize key risks')" value={job} onChange={(e) => setJob(e.target.value)} style={{...styles.input, ...styles.textarea}}/>
-                <button onClick={onStartAnalysis} style={styles.button} disabled={loading}>
-                    {loading ? 'Analyzing...' : 'Start Analysis'}
+            <div style={styles.tabsContainer}>
+                <button
+                    style={{...styles.tabButton, ...(activeTab === 'analysis' && styles.activeTab)}}
+                    onClick={() => setActiveTab('analysis')}
+                >
+                    Start New Analysis
                 </button>
-                {error && <p style={{ color: 'red', fontSize: '0.9rem', textAlign: 'center' }}>{error}</p>}
+                <button
+                    style={{...styles.tabButton, ...(activeTab === 'selection' && styles.activeTab)}}
+                    onClick={() => setActiveTab('selection')}
+                >
+                    Contextual Insights
+                </button>
             </div>
-            <div style={styles.chatBox}>
-                <div style={styles.placeholderText}>Upload documents and define your analysis goals to begin.</div>
-            </div>
+
+            {activeTab === 'analysis' && (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                    <div style={styles.chatControls}>
+                        <label htmlFor="file-upload" style={styles.uploadButton}>Upload PDFs</label>
+                        <input id="file-upload" type="file" accept="application/pdf" multiple onChange={onFileChange} style={{ display: 'none' }}/>
+                        <div style={styles.pdfList}>
+                            {pdfs && pdfs.map((pdf) => (
+                                <button key={pdf.name} onClick={() => onSelectPDF(pdf)} style={{...styles.pdfListItem, ...(selectedPDF?.name === pdf.name && styles.activePdfListItem)}}>
+                                    {pdf.name}
+                                </button>
+                            ))}
+                        </div>
+                        <input type="text" placeholder="Persona (e.g., 'a legal expert')" value={persona} onChange={(e) => setPersona(e.target.value)} style={styles.input}/>
+                        <textarea placeholder="Job to be done (e.g., 'summarize key risks')" value={job} onChange={(e) => setJob(e.target.value)} style={{...styles.input, ...styles.textarea}}/>
+                        <button onClick={onStartAnalysis} style={styles.button} disabled={loading}>
+                            {loading ? 'Analyzing...' : 'Start Analysis'}
+                        </button>
+                        {error && <p style={{ color: 'red', fontSize: '0.9rem', textAlign: 'center' }}>{error}</p>}
+                    </div>
+                    <div style={styles.chatBox}>
+                        <div style={styles.placeholderText}>Upload documents and define your analysis goals to begin.</div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'selection' && (
+                <div style={{...styles.insightsPanel, maxHeight: '100%', height: '100%'}}>
+                    <div style={styles.selectionInsightsContainer}>
+                        {isSelectionLoading && <div style={styles.loadingIndicator}>Generating insights...</div>}
+                        {selectionInsights ? (
+                            <div>
+                                <div style={styles.insightCategory}>
+                                    <h6 style={styles.insightCategoryTitle}>Summary</h6>
+                                    <p>{selectionInsights.summary}</p>
+                                </div>
+                                <div style={styles.insightCategory}>
+                                    <h6 style={styles.insightCategoryTitle}>Key Takeaways</h6>
+                                    <ul>
+                                        {selectionInsights.key_takeaways.map((item, i) => <li key={i}>{item}</li>)}
+                                    </ul>
+                                </div>
+                                <div style={styles.insightCategory}>
+                                    <h6 style={styles.insightCategoryTitle}>Potential Questions</h6>
+                                    <ul>
+                                        {selectionInsights.potential_questions.map((item, i) => <li key={i}>{item}</li>)}
+                                    </ul>
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={styles.placeholderText}>
+                                Select text in the PDF and click "Get Insights on Selection" to see details here.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
+
 
 const AnimatedBotMessage = ({ message }) => {
     const { displayedText, isDone } = useTypingEffect(message.content);
@@ -458,7 +549,11 @@ const AnimatedBotMessage = ({ message }) => {
 };
 
 // --- ChatAndAnalysisSection for active chats ---
-const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResult, onInsightClick, translatedInsights, setTranslatedInsights, sessionId }) => {
+const ChatAndAnalysisSection = ({
+    messages, onSendMessage, loading, analysisResult, onInsightClick,
+    translatedInsights, setTranslatedInsights, sessionId,
+    selectionInsights, isSelectionLoading, activeTab, setActiveTab
+}) => {
   const { currentTheme } = useTheme();
   const styles = getPdfChatStyles(currentTheme);
   const [input, setInput] = useState('');
@@ -473,7 +568,7 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResu
 
   useEffect(() => {
     if (chatBoxRef.current) chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight;
-  }, [messages, loading, audioUrl, analysisResult, translatedInsights]);
+  }, [messages, loading, audioUrl, analysisResult, translatedInsights, selectionInsights]);
 
   const handleSend = () => { if (!input.trim()) return; onSendMessage(input); setInput(''); };
 
@@ -517,8 +612,23 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResu
 
   return (
     <div style={styles.chatPanel}>
-        <div ref={chatBoxRef} style={styles.chatBox}>
-            {analysisResult && (
+        <div style={styles.tabsContainer}>
+            <button
+                style={{...styles.tabButton, ...(activeTab === 'analysis' && styles.activeTab)}}
+                onClick={() => setActiveTab('analysis')}
+            >
+                Generated Insights
+            </button>
+            <button
+                style={{...styles.tabButton, ...(activeTab === 'selection' && styles.activeTab)}}
+                onClick={() => setActiveTab('selection')}
+            >
+                Selection Insights
+            </button>
+        </div>
+
+        <div style={styles.insightsPanel}>
+            {activeTab === 'analysis' && analysisResult && (
                 <div style={styles.analysisResult}>
                     <h4>Initial Insights:</h4>
                       {analysisResult.top_sections?.slice(0, 3).map((section, idx) => (
@@ -583,6 +693,39 @@ const ChatAndAnalysisSection = ({ messages, onSendMessage, loading, analysisResu
                     </div>
                 </div>
             )}
+            {activeTab === 'selection' && (
+                <div style={styles.selectionInsightsContainer}>
+                    {isSelectionLoading && <div style={styles.loadingIndicator}>Generating insights...</div>}
+                    {selectionInsights && (
+                        <div>
+                            <div style={styles.insightCategory}>
+                                <h6 style={styles.insightCategoryTitle}>Summary</h6>
+                                <p>{selectionInsights.summary}</p>
+                            </div>
+                            <div style={styles.insightCategory}>
+                                <h6 style={styles.insightCategoryTitle}>Key Takeaways</h6>
+                                <ul>
+                                    {selectionInsights.key_takeaways.map((item, i) => <li key={i}>{item}</li>)}
+                                </ul>
+                            </div>
+                            <div style={styles.insightCategory}>
+                                <h6 style={styles.insightCategoryTitle}>Potential Questions</h6>
+                                <ul>
+                                    {selectionInsights.potential_questions.map((item, i) => <li key={i}>{item}</li>)}
+                                </ul>
+                            </div>
+                        </div>
+                    )}
+                    {!isSelectionLoading && !selectionInsights && (
+                        <div style={styles.placeholderText}>
+                            Select text in the PDF and click "Get Insights on Selection" to see details here.
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+
+        <div ref={chatBoxRef} style={styles.chatBox}>
             {messages.map((msg, idx) => (
                 msg.role === 'user' ? (
                     <div key={idx} style={{...styles.chatMessage, ...styles.userMessage}}>{msg.content}</div>
@@ -721,8 +864,7 @@ const getPdfChatStyles = (theme) => ({
     pdfList: { display: 'flex', gap: '0.5rem', overflowX: 'auto', padding: '0.5rem 0' },
     pdfListItem: { padding: '0.4rem 0.8rem', borderRadius: '5px', cursor: 'pointer', whiteSpace: 'nowrap', border: `1px solid ${theme.border}`, backgroundColor: 'transparent', color: theme.text },
     activePdfListItem: { backgroundColor: theme.activeItem, color: theme.activeItemText, fontWeight: 'bold', borderColor: theme.primary },
-    chatBox: { flexGrow: 1, overflowY: 'auto', padding: '0.5rem', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', border: `1px solid ${theme.border}`, borderRadius: '8px', backgroundColor: theme.background },
-    chatInputContainer: { display: 'flex', gap: '0.5rem', marginTop: 'auto' },
+    chatInputContainer: { display: 'flex', gap: '0.5rem', marginTop: 'auto', flexShrink: 0 },
     input: { flex: 1, padding: '0.75rem', fontSize: '1rem', borderRadius: '5px', border: `1px solid ${theme.border}`, backgroundColor: theme.inputBg, color: theme.text, width: 'calc(100% - 1.5rem)' },
     textarea: { minHeight: '60px', resize: 'vertical', fontFamily: "'Segoe UI', Roboto, sans-serif" },
     button: { padding: '0.75rem 1.5rem', backgroundColor: theme.primary, color: theme.buttonText, border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' },
@@ -734,7 +876,7 @@ const getPdfChatStyles = (theme) => ({
     analysisResult: { padding: '0.5rem', backgroundColor: theme.background, borderRadius: '8px', marginBottom: '1rem' },
     analysisSnippet: { borderLeft: `3px solid ${theme.primary}`, padding: '10px', margin: '10px 0', backgroundColor: theme.inputBg, borderRadius: '4px', cursor: 'pointer', opacity: 0, animation: 'fadeIn 0.5s forwards' },
     analysisReason: { fontStyle: 'italic', opacity: 0.9, marginBottom: '8px', fontSize: '0.9rem' },
-    sectionTitleText: { fontWeight: 'bold', margin: '0 0 8px 0' }, // New style for the section title
+    sectionTitleText: { fontWeight: 'bold', margin: '0 0 8px 0' },
     snippetFooter: { textAlign: 'right', fontSize: '0.8rem', opacity: 0.7, marginTop: '8px' },
     llmInsightsContainer: { marginTop: '1.5rem', padding: '1rem', backgroundColor: theme.secondary, borderRadius: '8px', border: `1px solid ${theme.border}` },
     insightsHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' },
@@ -746,7 +888,39 @@ const getPdfChatStyles = (theme) => ({
     languageSelector: { padding: '0.75rem', backgroundColor: theme.inputBg, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: '5px' },
     audioPlayer: { width: '100%', marginTop: '1rem' },
     showOriginalButton: { background: 'none', border: `1px solid ${theme.border}`, color: theme.text, cursor: 'pointer', borderRadius: '4px', padding: '2px 6px', fontSize: '0.75rem', marginRight: '8px' },
+
+    // --- Styles for Tabs and Insights Panel ---
+    tabsContainer: { display: 'flex', borderBottom: `1px solid ${theme.border}`, flexShrink: 0 },
+    tabButton: {
+        padding: '0.75rem 1.5rem',
+        border: 'none',
+        background: 'none',
+        cursor: 'pointer',
+        color: theme.text,
+        opacity: 0.7,
+        borderBottom: '3px solid transparent'
+    },
+    activeTab: {
+        opacity: 1,
+        borderBottom: `3px solid ${theme.primary}`,
+        fontWeight: 'bold'
+    },
+    insightsPanel: {
+        overflowY: 'auto',
+        maxHeight: '45%',
+        padding: '0.5rem',
+        borderBottom: `1px solid ${theme.border}`,
+        flexShrink: 0
+    },
+    selectionInsightsContainer: {
+        padding: '0.5rem',
+        backgroundColor: theme.background,
+        borderRadius: '8px',
+        animation: 'fadeIn 0.5s forwards'
+    },
+    chatBox: { flexGrow: 1, overflowY: 'auto', padding: '0.5rem', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', border: `1px solid ${theme.border}`, borderRadius: '8px', backgroundColor: theme.background },
 });
+
 
 const AppWrapper = () => (
     <ThemeContextProvider>
