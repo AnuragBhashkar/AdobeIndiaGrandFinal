@@ -664,7 +664,7 @@ const ChatAndAnalysisSection = ({
                           <div key={idx} style={styles.analysisSnippet} onClick={() => onInsightClick(section)}>
                               <p style={styles.analysisReason}><strong>From {section.document}:</strong> {section.reasoning}</p>
                               <p style={styles.sectionTitleText}>Section: "{section.section_title}"</p>
-                              <p style={styles.sectionContentText}>{section.content}</p>
+                              <p style={styles.sectionContentText}>{section.subsection_analysis}</p>
                               <div style={styles.snippetFooter}>
                                   <small>Page: {section.page_number > 0 ? section.page_number : 'N/A'}</small>
                               </div>
