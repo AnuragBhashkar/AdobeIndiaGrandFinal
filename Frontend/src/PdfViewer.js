@@ -1,49 +1,91 @@
-import React, { useEffect, useRef } from 'react';
-import { useAdobeSdk } from './useAdobeSdk'; // Import the new custom hook
+// src/PdfViewer.js
 
-const PdfViewer = ({ filePromise, fileName }) => {
+import React, { useEffect, useRef } from 'react';
+import { useAdobeSdk } from './useAdobeSdk';
+
+const PdfViewer = ({ filePromise, fileName, pageNumber, onTextSelect }) => {
   const viewerRef = useRef(null);
-  const isSdkReady = useAdobeSdk(); // Use the hook to know when the SDK is ready
+  const isSdkReady = useAdobeSdk();
+  const apisRef = useRef(null);
 
   useEffect(() => {
-    // Do not attempt to render if the SDK isn't ready, if there's no file promise,
-    // or if the viewer div isn't available yet.
-    if (!isSdkReady || !filePromise || !viewerRef.current) {
-      return;
-    }
-
-    // Ensure the Client ID is available before initializing the viewer
-    const clientId = process.env.REACT_APP_ADOBE_CLIENT_ID;
-    if (!clientId) {
-        console.error("Adobe Client ID is missing. Check your .env file and restart the server.");
+    if (isSdkReady && filePromise && viewerRef.current) {
+      const clientId = process.env.REACT_APP_ADOBE_CLIENT_ID;
+      if (!clientId) {
+        console.error("Adobe Client ID is missing.");
         return;
-    }
-
-    const adobeDCView = new window.AdobeDC.View({
-      clientId: clientId,
-      divId: viewerRef.current.id,
-    });
-
-    // previewFile can accept a promise that resolves with the file content
-    adobeDCView.previewFile(
-      {
-        // Pass the promise directly to the content property
-        content: { promise: filePromise },
-        metaData: { fileName: fileName },
-      },
-      {
-        embedMode: 'SIZED_CONTAINER',
-        showAnnotationTools: true,
       }
-    ).catch(error => {
-      console.error("Adobe PDF Viewer could not render the file. This is likely a domain configuration issue in your Adobe Developer Console.", error);
-    });
 
+      apisRef.current = null;
+      viewerRef.current.innerHTML = "";
+
+      const adobeDCView = new window.AdobeDC.View({
+        clientId: clientId,
+        divId: viewerRef.current.id,
+      });
+
+      const previewFilePromise = adobeDCView.previewFile(
+        {
+          content: { promise: filePromise },
+          metaData: { fileName: fileName },
+        },
+        { embedMode: 'SIZED_CONTAINER' }
+      );
+
+      previewFilePromise.then(adobeViewer => {
+        adobeViewer.getAPIs().then(apis => {
+          apisRef.current = apis;
+          apis.gotoLocation(pageNumber);
+        });
+      });
+    }
   }, [isSdkReady, filePromise, fileName]);
 
-  // Use a key to help React re-mount the component when the file changes
+  useEffect(() => {
+    if (apisRef.current) {
+      apisRef.current.gotoLocation(pageNumber)
+        .then(() => console.log(`Successfully navigated to page ${pageNumber}.`))
+        .catch(error => console.error("Error navigating to page:", error));
+    }
+  }, [pageNumber]);
+
+  const handleGetSelectedText = () => {
+    if (apisRef.current) {
+        apisRef.current.getSelectedContent()
+            .then(result => {
+                if (result && result.type === 'text' && result.data) {
+                    onTextSelect(result.data);
+                } else {
+                    alert('No text selected. Please select some text in the PDF to get insights.');
+                }
+            })
+            .catch(error => console.error("Error getting selected content:", error));
+    }
+  };
+
   return (
-    <div key={fileName} ref={viewerRef} id={`adobe-dc-view-${fileName}`} style={{ height: '100%', width: '100%' }} />
+    <div style={{ height: '100%', position: 'relative' }}>
+      <div id="adobe-dc-view" ref={viewerRef} style={{ height: '100%' }} />
+      <button
+        onClick={handleGetSelectedText}
+        style={{
+            position: 'absolute',
+            bottom: '20px',
+            right: '20px',
+            zIndex: 10,
+            padding: '10px 15px',
+            backgroundColor: '#e50914',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+        }}
+      >
+        Get Insights on Selection
+      </button>
+    </div>
   );
 };
 
