@@ -283,6 +283,10 @@ const PdfChatPage = () => {
         formData.append('persona', persona);
         formData.append('job_to_be_done', job);
         pdfs.forEach(pdfFile => formData.append('files', pdfFile));
+        
+        if (sessionId) {
+            formData.append('sessionId', sessionId);
+        }
 
         try {
             const response = await axios.post('http://localhost:8000/analyze/', formData, {
@@ -333,6 +337,26 @@ const PdfChatPage = () => {
             setPdfs([]);
             setSelectedPDF(null);
             setFilePromise(null);
+            if (sessionData.file_paths && sessionData.file_paths.length > 0) {
+            const filePromises = sessionData.file_paths.map(async (path) => {
+                const fileName = path.split('/').pop();
+                const fileResponse = await axios.get(`http://localhost:8000${path}`, {
+                    responseType: 'blob',
+                });
+                return new File([fileResponse.data], fileName, { type: 'application/pdf' });
+            });
+            const loadedPdfs = await Promise.all(filePromises);
+            setPdfs(loadedPdfs);
+
+            // Automatically select the first PDF to display
+            if (loadedPdfs.length > 0) {
+                handlePDFSelect(loadedPdfs[0]);
+            }
+        } else {
+            setPdfs([]);
+            setSelectedPDF(null);
+            setFilePromise(null);
+        }
         } catch (err) {
             setError("Failed to load session.");
         } finally {
@@ -409,41 +433,46 @@ const PdfChatPage = () => {
                     )}
                 </div>
 
-                {!sessionId && !analysisResult ? (
-                    <NewChatSetup
-                        pdfs={pdfs}
-                        onFileChange={handleFileChange}
-                        onSelectPDF={handlePDFSelect}
-                        selectedPDF={selectedPDF}
-                        persona={persona}
-                        setPersona={setPersona}
-                        job={job}
-                        setJob={setJob}
-                        onStartAnalysis={handleStartAnalysis}
-                        loading={loading}
-                        error={error}
-                        selectionInsights={selectionInsights}
-                        isSelectionLoading={isSelectionLoading}
-                        activeTab={activeTab}
-                        setActiveTab={setActiveTab}
-                    />
-                ) : (
-                    <ChatAndAnalysisSection
-                        messages={messages}
-                        onSendMessage={handleSendQuery}
-                        loading={loading}
-                        analysisResult={analysisResult}
-                        onInsightClick={handleInsightClick}
-                        sessionId={sessionId}
-                        translatedInsights={translatedInsights}
-                        setTranslatedInsights={setTranslatedInsights}
-                        // --- Pass new props down ---
-                        selectionInsights={selectionInsights}
-                        isSelectionLoading={isSelectionLoading}
-                        activeTab={activeTab}
-                        setActiveTab={setActiveTab}
-                    />
-                )}
+                <div style={styles.chatPanel}>
+                    <div style={styles.chatControls}>
+                        <label htmlFor="file-upload" style={styles.uploadButton}>Upload PDFs</label>
+                        <input id="file-upload" type="file" accept="application/pdf" multiple onChange={handleFileChange} style={{ display: 'none' }}/>
+                        <div style={styles.pdfList}>
+                            {pdfs && pdfs.map((pdf) => (
+                                <button key={pdf.name} onClick={() => handlePDFSelect(pdf)} style={{...styles.pdfListItem, ...(selectedPDF?.name === pdf.name && styles.activePdfListItem)}}>
+                                    {pdf.name}
+                                </button>
+                            ))}
+                        </div>
+                        <input type="text" placeholder="Persona (e.g., 'a legal expert')" value={persona} onChange={(e) => setPersona(e.target.value)} style={styles.input}/>
+                        <textarea placeholder="Job to be done (e.g., 'summarize key risks')" value={job} onChange={(e) => setJob(e.target.value)} style={{...styles.input, ...styles.textarea}}/>
+                        <button onClick={handleStartAnalysis} style={styles.button} disabled={loading}>
+                            {loading ? 'Analyzing...' : 'Generate Insights'}
+                        </button>
+                        {error && <p style={{ color: 'red', fontSize: '0.9rem', textAlign: 'center' }}>{error}</p>}
+                    </div>
+
+                    {!analysisResult ? (
+                        <div style={styles.chatBox}>
+                           <div style={styles.placeholderText}>Upload documents and define your analysis goals to begin.</div>
+                        </div>
+                    ) : (
+                        <ChatAndAnalysisSection
+                            messages={messages}
+                            onSendMessage={handleSendQuery}
+                            loading={loading}
+                            analysisResult={analysisResult}
+                            onInsightClick={handleInsightClick}
+                            sessionId={sessionId}
+                            translatedInsights={translatedInsights}
+                            setTranslatedInsights={setTranslatedInsights}
+                            selectionInsights={selectionInsights}
+                            isSelectionLoading={isSelectionLoading}
+                            activeTab={activeTab}
+                            setActiveTab={setActiveTab}
+                        />
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -611,7 +640,7 @@ const ChatAndAnalysisSection = ({
   const displayInsights = translatedInsights || analysisResult?.llm_insights;
 
   return (
-    <div style={styles.chatPanel}>
+    <>
         <div style={styles.tabsContainer}>
             <button
                 style={{...styles.tabButton, ...(activeTab === 'analysis' && styles.activeTab)}}
@@ -635,6 +664,7 @@ const ChatAndAnalysisSection = ({
                           <div key={idx} style={styles.analysisSnippet} onClick={() => onInsightClick(section)}>
                               <p style={styles.analysisReason}><strong>From {section.document}:</strong> {section.reasoning}</p>
                               <p style={styles.sectionTitleText}>Section: "{section.section_title}"</p>
+                              <p style={styles.sectionContentText}>{section.content}</p>
                               <div style={styles.snippetFooter}>
                                   <small>Page: {section.page_number > 0 ? section.page_number : 'N/A'}</small>
                               </div>
@@ -739,7 +769,7 @@ const ChatAndAnalysisSection = ({
             <input type="text" placeholder="Ask a follow-up..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} style={styles.input} disabled={!analysisResult || loading}/>
             <button onClick={handleSend} style={styles.button} disabled={!analysisResult || loading}>Send</button>
         </div>
-    </div>
+    </>
   );
 };
 

@@ -7,7 +7,7 @@ import uuid
 import asyncio
 import random
 from typing import List, Dict, Any
-
+from fastapi.staticfiles import StaticFiles
 import httpx
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -22,7 +22,8 @@ from session_manager import (
     create_session,
     get_session,
     add_message_to_history,
-    get_all_sessions_metadata
+    get_all_sessions_metadata,
+    update_session 
 )
 
 # --- TTS Library Imports ---
@@ -53,6 +54,12 @@ app = FastAPI(
     description="API for persona-driven PDF analysis, chat, and multi-language audio summaries, powered by Gemini 1.5 Flash.",
     version="2.5.1" # Version bump for bug fix
 )
+# Create a directory for storing session files if it doesn't exist
+SESSION_FILES_DIR = "session_files"
+os.makedirs(SESSION_FILES_DIR, exist_ok=True)
+
+
+app.mount("/session_files", StaticFiles(directory=SESSION_FILES_DIR), name="session_files")
 
 # --- Add CORS Middleware ---
 app.add_middleware(
@@ -259,7 +266,7 @@ async def run_pipeline(persona: str, job_to_be_done: str, pdf_dir: str) -> Dict[
     # Step 4: Safely perform a deep merge of the results into the default structure.
     if analysis_result:
         final_result = deep_merge_dicts(final_result, analysis_result)
-    print(final_result)
+    # print(final_result)
     return final_result
 
 # ==============================================================================
@@ -267,24 +274,47 @@ async def run_pipeline(persona: str, job_to_be_done: str, pdf_dir: str) -> Dict[
 # ==============================================================================
 
 @app.post("/analyze/")
-async def analyze_documents(files: List[UploadFile] = File(...), persona: str = Form(...), job_to_be_done: str = Form(...)):
+async def analyze_documents(files: List[UploadFile] = File(...), persona: str = Form(...), job_to_be_done: str = Form(...), sessionId: str = Form(None)):
     if not get_redis_client():
         raise HTTPException(status_code=503, detail="Redis service is unavailable.")
-    
+
+    # If it's a new session, create a unique directory for its files
+    session_dir_name = sessionId if sessionId else str(uuid.uuid4())
+    session_path = os.path.join(SESSION_FILES_DIR, session_dir_name)
+    os.makedirs(session_path, exist_ok=True)
+
+    file_paths = []
     temp_dir = f"temp_{uuid.uuid4()}"
     os.makedirs(temp_dir)
     try:
         for file in files:
-            file_path = os.path.join(temp_dir, file.filename)
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+            # Save files to the session-specific directory
+            file_location = os.path.join(session_path, file.filename)
+            with open(file_location, "wb+") as file_object:
+                file_object.write(file.file.read())
+            # Store the web-accessible path
+            file_paths.append(f"/session_files/{session_dir_name}/{file.filename}")
+
+            # Also save to a temporary directory for immediate analysis
+            temp_file_location = os.path.join(temp_dir, file.filename)
+            with open(temp_file_location, "wb") as buffer:
+                 with open(file_location, "rb") as f:
+                    buffer.write(f.read())
+
 
         analysis_result = await run_pipeline(persona=persona, job_to_be_done=job_to_be_done, pdf_dir=temp_dir)
-        session_id = create_session(analysis_result)
-        if not session_id:
-            raise HTTPException(status_code=500, detail="Failed to create a new session.")
-        
-        return JSONResponse(content={"sessionId": session_id, "analysis": analysis_result})
+        # Add the file paths to the metadata before creating the session
+        analysis_result["metadata"]["file_paths"] = file_paths
+
+        if sessionId:
+            update_session(sessionId, analysis_result)
+            current_session_id = sessionId
+        else:
+            current_session_id = create_session(analysis_result)
+            if not current_session_id:
+                raise HTTPException(status_code=500, detail="Failed to create a new session.")
+
+        return JSONResponse(content={"sessionId": current_session_id, "analysis": analysis_result})
     finally:
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)

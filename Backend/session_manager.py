@@ -11,6 +11,8 @@ from redis_client import get_redis_client
 SESSION_META_PREFIX = "session:meta:"
 SESSION_HISTORY_PREFIX = "session:history:"
 SESSION_ANALYSIS_PREFIX = "session:analysis:"
+SESSION_FILES_PREFIX = "session:files:"
+
 
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +34,7 @@ def create_session(analysis_result: Dict[str, Any]) -> Optional[str]:
     Returns:
         The unique session ID, or None if Redis is unavailable.
     """
+
     redis = get_redis_client()
     if not redis:
         logger.error("❌ Redis client is not available. Failed to create session.")
@@ -62,7 +65,10 @@ def create_session(analysis_result: Dict[str, Any]) -> Optional[str]:
         # This command is commented out as it is not necessary to initialize an empty list
         # pipe.rpush(history_key, "INIT") 
         # pipe.lpop(history_key, "INIT")
-        
+        files_key = f"{SESSION_FILES_PREFIX}{session_id}"
+        file_paths = metadata.get("file_paths", [])
+        if file_paths:
+            pipe.rpush(files_key, *file_paths)
         pipe.execute()
 
     logger.info(f"✅ New session created with optimized structure. ID: {session_id}")
@@ -87,6 +93,8 @@ def get_session(session_id: str) -> Optional[Dict[str, Any]]:
     history_key = f"{SESSION_HISTORY_PREFIX}{session_id}"
 
     analysis_data_json = redis.get(analysis_key)
+    files_key = f"{SESSION_FILES_PREFIX}{session_id}"
+    file_paths = redis.lrange(files_key, 0, -1)
     if not analysis_data_json:
         return None  # Session does not exist
 
@@ -95,9 +103,10 @@ def get_session(session_id: str) -> Optional[Dict[str, Any]]:
     chat_history = [json.loads(msg) for msg in chat_history_raw]
 
     return {
-        "analysis": json.loads(analysis_data_json),
-        "chat_history": chat_history
-    }
+    "analysis": json.loads(analysis_data_json),
+    "chat_history": chat_history,
+    "file_paths": file_paths  # <-- Add this
+}
 
 
 def add_message_to_history(session_id: str, message: Dict[str, str]):
@@ -154,3 +163,40 @@ def get_all_sessions_metadata() -> List[Dict[str, Any]]:
     )
     
     return sessions_metadata
+
+
+# In session_manager.py
+
+def update_session(session_id: str, analysis_result: Dict[str, Any]):
+    """
+    Updates an existing session with new analysis data, overwriting the old
+    analysis and clearing the chat history.
+    """
+    redis = get_redis_client()
+    if not redis:
+        logger.error("❌ Redis client is not available. Failed to update session.")
+        return
+
+    metadata = analysis_result.get("metadata", {})
+    with redis.pipeline() as pipe:
+        # Update metadata
+        meta_key = f"{SESSION_META_PREFIX}{session_id}"
+        pipe.hset(meta_key, mapping={
+            "persona": metadata.get("persona", ""),
+            "job_to_be_done": metadata.get("job_to_be_done", ""),
+            "processing_timestamp": metadata.get("processing_timestamp", ""),
+            "language": metadata.get("language", "en"),
+            "doc_count": len(metadata.get("input_documents", []))
+        })
+
+        # Overwrite analysis data
+        analysis_key = f"{SESSION_ANALYSIS_PREFIX}{session_id}"
+        pipe.set(analysis_key, json.dumps(analysis_result))
+
+        # Clear old chat history
+        history_key = f"{SESSION_HISTORY_PREFIX}{session_id}"
+        pipe.delete(history_key)
+
+        pipe.execute()
+
+    logger.info(f"✅ Session updated with new analysis. ID: {session_id}")
