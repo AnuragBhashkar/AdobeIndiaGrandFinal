@@ -274,7 +274,60 @@ const PdfChatPage = ({ userToken }) => {
     const [selectionInsights, setSelectionInsights] = useState(null);
     const [isSelectionLoading, setIsSelectionLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('analysis'); // 'analysis' or 'selection'
+    // const [isProcessing, setIsProcessing] = useState(false); // New state for background processing
+    
 
+    // const handleBulkUpload = async () => {
+    //     if (pdfs.length === 0) {
+    //         setError('Please upload PDFs for bulk processing.');
+    //         return;
+    //     }
+    //     setIsProcessing(true);
+    //     setError('');
+    //     const formData = new FormData();
+    //     pdfs.forEach(pdfFile => formData.append('files', pdfFile));
+
+    //     try {
+    //         await axios.post('http://localhost:8000/analyze/', formData, {
+    //             headers: {
+    //                 'Content-Type': 'multipart/form-data',
+    //                 'Authorization': userToken
+    //             },
+    //         });
+    //         // Give user feedback
+    //         alert('Your documents are being processed in the background. You will be notified when it is complete.');
+    //     } catch (err) {
+    //         setError('Failed to start background processing.');
+    //     } finally {
+    //         setIsProcessing(false);
+    //     }
+    // };
+    
+    // const handleConnectTheDots = async () => {
+    //     if (pdfs.length !== 1) {
+    //         setError('Please upload a single new document to connect.');
+    //         return;
+    //     }
+    //     setLoading(true);
+    //     setError('');
+    //     const formData = new FormData();
+    //     formData.append('file', pdfs[0]);
+
+    //     try {
+    //         const response = await axios.post('http://localhost:8000/connect-dots/', formData, {
+    //             headers: {
+    //                 'Content-Type': 'multipart/form-data',
+    //                 'Authorization': userToken
+    //             }
+    //         });
+    //         // Display the insights
+    //         setMessages([{ role: 'bot', content: response.data.insights }]);
+    //     } catch (err) {
+    //         setError('Failed to connect the dots.');
+    //     } finally {
+    //         setLoading(false);
+    //     }
+    // };
 
     const handlePDFSelect = (pdf) => {
         if (selectedPDF?.name !== pdf.name) {
@@ -301,6 +354,7 @@ const PdfChatPage = ({ userToken }) => {
         setLoading(true);
         setError('');
         setTranslatedInsights(null);
+        setAnalysisResult(null); // Clear previous results
 
         const formData = new FormData();
         formData.append('persona', persona);
@@ -450,6 +504,9 @@ const PdfChatPage = ({ userToken }) => {
                 activeSessionId={sessionId}
                 userToken={userToken}
             />
+            
+            
+
             <div style={styles.mainContent}>
                 <div style={styles.viewerPanel}>
                     {filePromise && selectedPDF ? ( // ERROR FIX: Ensure selectedPDF is not null

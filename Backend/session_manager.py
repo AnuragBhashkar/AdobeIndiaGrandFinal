@@ -12,6 +12,7 @@ SESSION_HISTORY_PREFIX = "session:history:"
 SESSION_ANALYSIS_PREFIX = "session:analysis:"
 SESSION_FILES_PREFIX = "session:files:"
 USER_PREFIX = "user:"
+USER_SUMMARIES_PREFIX = "user:summaries:" # Added for summaries
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,6 +48,8 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
     if not verify_password(password, user['hashed_password']):
         return None
     return user
+
+# --- Session and Summary Management ---
 
 def create_session(analysis_result: Dict[str, Any], user_id: str) -> Optional[str]:
     redis = get_redis_client()
@@ -176,3 +179,31 @@ def update_session(session_id: str, analysis_result: Dict[str, Any]):
         pipe.execute()
 
     logger.info(f"✅ Session updated with new analysis. ID: {session_id}")
+
+def store_summary(user_id: str, file_name: str, summary: str):
+    """Stores a document summary in Redis."""
+    redis = get_redis_client()
+    if not redis:
+        logger.error("❌ Redis client is not available. Failed to store summary.")
+        return
+    summary_key = f"{USER_SUMMARIES_PREFIX}{user_id}"
+    redis.hset(summary_key, file_name, summary)
+    logger.info(f"✅ Summary stored for user {user_id}, file: {file_name}")
+
+def get_all_summaries_for_user(user_id: str) -> Dict[str, str]:
+    """Retrieves all document summaries for a user from Redis."""
+    redis = get_redis_client()
+    if not redis:
+        return {}
+    summary_key = f"{USER_SUMMARIES_PREFIX}{user_id}"
+    summaries = redis.hgetall(summary_key)
+    return {k: v for k, v in summaries.items()}
+
+def check_existing_summaries(user_id: str, file_names: List[str]) -> Dict[str, bool]:
+    """Checks which of the given filenames already have a summary in Redis."""
+    redis = get_redis_client()
+    if not redis:
+        return {name: False for name in file_names}
+    
+    summary_key = f"{USER_SUMMARIES_PREFIX}{user_id}"
+    return {name: redis.hexists(summary_key, name) for name in file_names}
