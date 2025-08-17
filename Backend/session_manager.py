@@ -12,7 +12,7 @@ SESSION_HISTORY_PREFIX = "session:history:"
 SESSION_ANALYSIS_PREFIX = "session:analysis:"
 SESSION_FILES_PREFIX = "session:files:"
 USER_PREFIX = "user:"
-USER_SUMMARIES_PREFIX = "user:summaries:" # Added for summaries
+# USER_SUMMARIES_PREFIX is no longer needed with the new approach
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ def create_user(email: str, hashed_password: str, name: str):
     if not redis:
         logger.error("❌ Redis client is not available. Failed to create user.")
         return None
-    
+
     user_key = f"{USER_PREFIX}{email}"
     redis.hset(user_key, mapping={
         "email": email,
@@ -36,7 +36,7 @@ def get_user(email: str) -> Optional[Dict[str, Any]]:
     redis = get_redis_client()
     if not redis:
         return None
-    
+
     user_key = f"{USER_PREFIX}{email}"
     user_data = redis.hgetall(user_key)
     return user_data if user_data else None
@@ -49,7 +49,7 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
         return None
     return user
 
-# --- Session and Summary Management ---
+# --- Session Management ---
 
 def create_session(analysis_result: Dict[str, Any], user_id: str) -> Optional[str]:
     redis = get_redis_client()
@@ -59,7 +59,8 @@ def create_session(analysis_result: Dict[str, Any], user_id: str) -> Optional[st
 
     session_id = str(uuid.uuid4())
     metadata = analysis_result.get("metadata", {})
-    metadata['user_id'] = user_id
+    # Ensure user_id from metadata is used, which should be set in main.py
+    user_id_from_meta = metadata.get('user_id', user_id)
 
     with redis.pipeline() as pipe:
         meta_key = f"{SESSION_META_PREFIX}{session_id}"
@@ -69,30 +70,30 @@ def create_session(analysis_result: Dict[str, Any], user_id: str) -> Optional[st
             "processing_timestamp": metadata.get("processing_timestamp", ""),
             "language": metadata.get("language", "en"),
             "doc_count": len(metadata.get("input_documents", [])),
-            "user_id": user_id
+            "user_id": user_id_from_meta
         })
 
         analysis_key = f"{SESSION_ANALYSIS_PREFIX}{session_id}"
         pipe.set(analysis_key, json.dumps(analysis_result))
-        
+
         files_key = f"{SESSION_FILES_PREFIX}{session_id}"
         file_paths = metadata.get("file_paths", [])
         if file_paths:
             pipe.rpush(files_key, *file_paths)
-        
-        user_sessions_key = f"user:{user_id}:sessions"
+
+        user_sessions_key = f"user:{user_id_from_meta}:sessions"
         pipe.sadd(user_sessions_key, session_id)
 
         pipe.execute()
 
-    logger.info(f"✅ New session created for user {user_id}. ID: {session_id}")
+    logger.info(f"✅ New session created for user {user_id_from_meta}. ID: {session_id}")
     return session_id
 
 def get_session(session_id: str) -> Optional[Dict[str, Any]]:
     redis = get_redis_client()
     if not redis:
         return None
-    
+
     analysis_key = f"{SESSION_ANALYSIS_PREFIX}{session_id}"
     history_key = f"{SESSION_HISTORY_PREFIX}{session_id}"
 
@@ -126,12 +127,12 @@ def get_all_sessions_metadata_for_user(user_id: str) -> List[Dict[str, Any]]:
 
     user_sessions_key = f"user:{user_id}:sessions"
     session_ids = redis.smembers(user_sessions_key)
-    
+
     sessions_metadata = []
     for session_id in session_ids:
         meta_key = f"{SESSION_META_PREFIX}{session_id}"
         metadata = redis.hgetall(meta_key)
-        
+
         if metadata:
             sessions_metadata.append({
                 "id": session_id,
@@ -140,12 +141,12 @@ def get_all_sessions_metadata_for_user(user_id: str) -> List[Dict[str, Any]]:
                 "timestamp": metadata.get('processing_timestamp', ''),
                 "doc_count": int(metadata.get('doc_count', 0))
             })
-    
+
     sessions_metadata.sort(
-        key=lambda x: x.get('timestamp') or '1970-01-01T00:00:00Z', 
+        key=lambda x: x.get('timestamp') or '1970-01-01T00:00:00Z',
         reverse=True
     )
-    
+
     return sessions_metadata
 
 def update_session(session_id: str, analysis_result: Dict[str, Any]):
@@ -155,11 +156,14 @@ def update_session(session_id: str, analysis_result: Dict[str, Any]):
         return
 
     meta_key = f"{SESSION_META_PREFIX}{session_id}"
-    user_id = redis.hget(meta_key, "user_id")
-
+    # The user_id should be present in the new analysis_result metadata
     metadata = analysis_result.get("metadata", {})
-    metadata['user_id'] = user_id
-    
+    user_id = metadata.get("user_id")
+
+    if not user_id:
+        # Fallback for safety, though it shouldn't be needed
+        user_id = redis.hget(meta_key, "user_id")
+
     with redis.pipeline() as pipe:
         pipe.hset(meta_key, mapping={
             "persona": metadata.get("persona", ""),
@@ -179,31 +183,3 @@ def update_session(session_id: str, analysis_result: Dict[str, Any]):
         pipe.execute()
 
     logger.info(f"✅ Session updated with new analysis. ID: {session_id}")
-
-def store_summary(user_id: str, file_name: str, summary: str):
-    """Stores a document summary in Redis."""
-    redis = get_redis_client()
-    if not redis:
-        logger.error("❌ Redis client is not available. Failed to store summary.")
-        return
-    summary_key = f"{USER_SUMMARIES_PREFIX}{user_id}"
-    redis.hset(summary_key, file_name, summary)
-    logger.info(f"✅ Summary stored for user {user_id}, file: {file_name}")
-
-def get_all_summaries_for_user(user_id: str) -> Dict[str, str]:
-    """Retrieves all document summaries for a user from Redis."""
-    redis = get_redis_client()
-    if not redis:
-        return {}
-    summary_key = f"{USER_SUMMARIES_PREFIX}{user_id}"
-    summaries = redis.hgetall(summary_key)
-    return {k: v for k, v in summaries.items()}
-
-def check_existing_summaries(user_id: str, file_names: List[str]) -> Dict[str, bool]:
-    """Checks which of the given filenames already have a summary in Redis."""
-    redis = get_redis_client()
-    if not redis:
-        return {name: False for name in file_names}
-    
-    summary_key = f"{USER_SUMMARIES_PREFIX}{user_id}"
-    return {name: redis.hexists(summary_key, name) for name in file_names}
