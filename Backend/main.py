@@ -26,10 +26,7 @@ from session_manager import (
     update_session,
     create_user,
     get_user,
-    authenticate_user,
-    store_summary,
-    get_all_summaries_for_user,
-    check_existing_summaries
+    authenticate_user
 )
 from auth import get_password_hash
 
@@ -72,7 +69,7 @@ class UserLogin(BaseModel):
 app = FastAPI(
     title="PDF Intelligence API",
     description="API for persona-driven PDF analysis, chat, and multi-language audio summaries, powered by Gemini 1.5 Flash.",
-    version="3.1.3" # Enhanced reasoning prompt
+    version="3.3.0" # Robust file-to-path mapping
 )
 SESSION_FILES_DIR = "session_files"
 os.makedirs(SESSION_FILES_DIR, exist_ok=True)
@@ -108,7 +105,7 @@ async def startup_event():
 async def get_current_user(authorization: str = Header(...)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing")
-    
+
     user_email = authorization
     user = get_user(user_email)
     if user is None:
@@ -148,21 +145,8 @@ async def call_gemini_api(payload: Dict[str, Any], timeout: float = 120.0) -> Di
 
 
 # ==============================================================================
-# Core Analysis & Summarization Functions
+# Core Analysis Function
 # ==============================================================================
-async def generate_summary_for_text(text: str) -> str:
-    """Generates a concise summary for a given block of text."""
-    if not text.strip():
-        return ""
-    prompt = f"Summarize the key information in the following text in 3-4 sentences.\n\n---\n{text}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    try:
-        response = await call_gemini_api(payload)
-        return response['candidates'][0]['content']['parts'][0]['text']
-    except Exception as e:
-        logger.error(f"Error generating summary: {e}")
-        return ""
-
 async def generate_connected_analysis(full_text_context: str, persona: str, job_to_be_done: str) -> Dict[str, Any]:
     json_schema = {
         "type": "OBJECT",
@@ -197,15 +181,15 @@ async def generate_connected_analysis(full_text_context: str, persona: str, job_
 
     prompt = f"""
     You are an expert research assistant acting as a '{persona}' whose goal is to '{job_to_be_done}'.
-    Analyze the provided context, which may contain full text from new documents and summaries of old documents.
+    Analyze the provided context, which contains the full text from one or more documents.
 
     **Your Reasoning Process:**
 
-    1.  **Assess Relevance:** First, review the user's goal: '{job_to_be_done}'. Now, read through all the provided document summaries and full texts. Decide which documents are relevant to this goal and which are not.
+    1.  **Assess Relevance:** First, review the user's goal: '{job_to_be_done}'. Now, read through all the provided document texts. Decide which documents are relevant to this goal and which are not.
 
-    2.  **Extract Initial Insights:** From the documents you identified as RELEVANT, extract the top 3-5 most important sections that directly address the user's goal. These will populate the 'top_sections' of the JSON response. If a new document is provided but is irrelevant, you should pull the top sections from the older, relevant documents instead.
+    2.  **Extract Initial Insights:** From the documents you identified as RELEVANT, extract the top 3-5 most important sections that directly address the user's goal. These will populate the 'top_sections' of the JSON response.
 
-    3.  **Synthesize Connected Insights:** Now, consider all the RELEVANT documents together (both new and old). Generate the deeper insights for the 'llm_insights' section.
+    3.  **Synthesize Connected Insights:** Now, consider all the RELEVANT documents together. Generate the deeper insights for the 'llm_insights' section.
         - **cross_document_connections**: This is the most critical part. Find connections, patterns, or contradictions between all the relevant materials. Explicitly state which documents you used and which you ignored (and why). For example: "I have ignored Lunch.pdf as it was not relevant to the goal of creating a dinner menu."
 
     **Provided Context:**
@@ -244,7 +228,7 @@ async def register_user(user: UserCreate):
     db_user = get_user(user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     hashed_password = get_password_hash(user.password)
     create_user(user.email, hashed_password, user.name)
     return {"message": "User created successfully"}
@@ -254,15 +238,15 @@ async def login_for_access_token(user: UserLogin):
     authenticated_user = authenticate_user(user.email, user.password)
     if not authenticated_user:
         raise HTTPException(status_code=401, detail="Incorrect email or password")
-    
+
     return {"access_token": user.email, "token_type": "bearer", "user_name": authenticated_user['name']}
 
 
 @app.post("/analyze/")
 async def analyze_documents(
-    files: List[UploadFile] = File(...), 
-    persona: str = Form(...), 
-    job_to_be_done: str = Form(...), 
+    files: List[UploadFile] = File(...),
+    persona: str = Form(...),
+    job_to_be_done: str = Form(...),
     sessionId: str = Form(None),
     current_user: dict = Depends(get_current_user)
 ):
@@ -270,62 +254,69 @@ async def analyze_documents(
     if not get_redis_client():
         raise HTTPException(status_code=503, detail="Database service is unavailable.")
 
-    uploaded_filenames = [f.filename for f in files]
-    existing_status = check_existing_summaries(user_email, uploaded_filenames)
-    
-    new_files = [f for f in files if not existing_status.get(f.filename)]
-    old_filenames = [name for name, exists in existing_status.items() if exists]
+    # --- User-specific file storage logic ---
+    user_files_dir = os.path.join(SESSION_FILES_DIR, user_email)
+    os.makedirs(user_files_dir, exist_ok=True)
 
     context_parts = []
-    
-    if old_filenames:
-        all_summaries = get_all_summaries_for_user(user_email)
-        old_summaries = {name: all_summaries.get(name) for name in old_filenames}
-        for name, summary in old_summaries.items():
-            context_parts.append(f"--- START OF SUMMARY for {name} ---\n{summary}\n--- END OF SUMMARY for {name} ---\n")
+    processed_filenames = set()
 
-    new_file_texts = {}
-    for file in new_files:
+    # --- Step 1 - Process newly uploaded files ---
+    for file in files:
+        if file.filename in processed_filenames:
+            continue
         try:
+            # Read and save the new file
             file_bytes = await file.read()
+            file_location = os.path.join(user_files_dir, file.filename)
+            with open(file_location, "wb+") as file_object:
+                file_object.write(file_bytes)
+
+            # Extract text for context
             with fitz.open(stream=file_bytes, filetype="pdf") as doc:
                 text = "".join(page.get_text() for page in doc)
-                new_file_texts[file.filename] = text
                 context_parts.append(f"--- START OF FULL TEXT for {file.filename} ---\n{text}\n--- END OF FULL TEXT for {file.filename} ---\n")
+                processed_filenames.add(file.filename)
+
         except Exception as e:
             logger.error(f"Error reading new file {file.filename}: {e}")
             raise HTTPException(status_code=400, detail=f"Could not process file: {file.filename}")
 
+    # --- Step 2 - Process previously stored files for the user ---
+    for existing_filename in os.listdir(user_files_dir):
+        if existing_filename in processed_filenames:
+            continue # Skip if it was part of the new upload
+
+        try:
+            file_path = os.path.join(user_files_dir, existing_filename)
+            with fitz.open(file_path) as doc:
+                text = "".join(page.get_text() for page in doc)
+                context_parts.append(f"--- START OF FULL TEXT for {existing_filename} ---\n{text}\n--- END OF FULL TEXT for {existing_filename} ---\n")
+                processed_filenames.add(existing_filename)
+        except Exception as e:
+            logger.error(f"Error reading existing file {existing_filename}: {e}")
+            continue
+
     if not context_parts:
-        raise HTTPException(status_code=400, detail="No content available for analysis.")
+        raise HTTPException(status_code=400, detail="No content available for analysis (new or existing).")
 
     full_text_context = "\n".join(context_parts)
-    
+
     analysis_result = await generate_connected_analysis(full_text_context, persona, job_to_be_done)
 
-    for filename, text in new_file_texts.items():
-        summary = await generate_summary_for_text(text)
-        if summary:
-            store_summary(user_email, filename, summary)
+    # --- Create a direct filename-to-path map for the frontend ---
+    file_path_map = {
+        filename: f"/session_files/{user_email}/{filename}"
+        for filename in processed_filenames
+    }
 
-    session_dir_name = sessionId if sessionId else str(uuid.uuid4())
-    session_path = os.path.join(SESSION_FILES_DIR, session_dir_name)
-    os.makedirs(session_path, exist_ok=True)
-    
-    file_paths = []
-    for file in files:
-        file_location = os.path.join(session_path, file.filename)
-        await file.seek(0)
-        with open(file_location, "wb+") as file_object:
-            file_object.write(await file.read())
-        file_paths.append(f"/session_files/{session_dir_name}/{file.filename}")
-    
     analysis_result["metadata"] = {
-        "input_documents": uploaded_filenames,
+        "input_documents": list(processed_filenames),
         "persona": persona,
         "job_to_be_done": job_to_be_done,
         "processing_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "file_paths": file_paths
+        "file_path_map": file_path_map,  # Use the robust map
+        "user_id": user_email
     }
 
     if sessionId:
@@ -335,7 +326,7 @@ async def analyze_documents(
         current_session_id = create_session(analysis_result, user_email)
         if not current_session_id:
             raise HTTPException(status_code=500, detail="Failed to create a new session.")
-            
+
     return JSONResponse(content={"sessionId": current_session_id, "analysis": analysis_result})
 
 
@@ -350,14 +341,14 @@ async def chat_with_documents(request: ChatRequest, current_user: dict = Depends
 
     prompt = f"You are a helpful assistant. Based on the initial analysis context and the conversation history, answer the user's last query. Do not give the results from outside the documents uploaded.\n\nContext: {json.dumps(updated_session_data['analysis'])}\n\nHistory: {updated_session_data['chat_history']}\n\nUser Query: {request.query}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    
+
     response_json = await call_gemini_api(payload)
     bot_response_content = response_json['candidates'][0]['content']['parts'][0]['text']
-    
+
     bot_message = {"role": "bot", "content": bot_response_content}
     add_message_to_history(request.sessionId, bot_message)
     return JSONResponse(content=bot_message)
-    
+
 @app.post("/insights-on-selection")
 async def get_insights_on_selection(request: SelectionInsightsRequest, current_user: dict = Depends(get_current_user)):
     prompt = f"""
@@ -410,7 +401,7 @@ async def get_session_details(session_id: str, current_user: dict = Depends(get_
     session_data = get_session(session_id)
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found.")
-    
+
     if session_data['analysis']['metadata'].get('user_id') != current_user['email']:
         raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
@@ -435,7 +426,16 @@ async def translate_insights_endpoint(request: TranslateInsightsRequest, current
 
     if not insights_for_translation:
         return JSONResponse(content={"message": "No text found in insights to translate."})
-        
+
+    # This is a placeholder for a batch translation function you might need to implement
+    async def translate_batch_gemini(texts_dict, target_lang):
+        # In a real scenario, you might want to batch these API calls
+        translated_dict = {}
+        for key, texts in texts_dict.items():
+            translated_texts = [await translate_text_gemini(text, target_lang) for text in texts]
+            translated_dict[key] = translated_texts
+        return translated_dict
+
     translated_insights = await translate_batch_gemini(insights_for_translation, "hi")
     if "error" in translated_insights:
         raise HTTPException(status_code=500, detail=translated_insights["error"])
@@ -478,13 +478,13 @@ async def generate_podcast_endpoint(request: PodcastRequest, background_tasks: B
 
     output_filename = f"temp_{uuid.uuid4()}.mp3"
     tts_provider = os.environ.get("TTS_PROVIDER", "offline")
-    
+
     success = text_to_speech_azure(final_script, output_filename, language=lang) if tts_provider == 'azure' else text_to_speech_offline(final_script, output_filename)
 
     if not success:
         if os.path.exists(output_filename): os.remove(output_filename)
         raise HTTPException(status_code=500, detail="Failed to synthesize audio.")
-    
+
     background_tasks.add_task(os.remove, output_filename)
     return FileResponse(path=output_filename, media_type='audio/mpeg', filename=f"podcast_summary_{lang}.mp3")
 
