@@ -53,14 +53,31 @@ const LoginModal = ({ isOpen, onClose, onLogin }) => {
     const { currentTheme } = useTheme();
     const styles = getModalStyles(currentTheme);
     const [isSignup, setIsSignup] = useState(false);
+    const [error, setError] = useState('');
 
     if (!isOpen) return null;
 
-    const handleLogin = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        const name = e.target.elements.name?.value || 'User';
-        onLogin(name);
-        onClose();
+        setError('');
+        const email = e.target.elements.email.value;
+        const password = e.target.elements.password.value;
+        const name = e.target.elements.name?.value;
+
+        try {
+            if (isSignup) {
+                await axios.post('http://localhost:8000/register', { email, password, name });
+                // Automatically log in after successful signup
+                const response = await axios.post('http://localhost:8000/login', { email, password });
+                onLogin(response.data.user_name, response.data.access_token);
+            } else {
+                const response = await axios.post('http://localhost:8000/login', { email, password });
+                onLogin(response.data.user_name, response.data.access_token);
+            }
+            onClose();
+        } catch (err) {
+            setError(err.response?.data?.detail || 'An error occurred.');
+        }
     };
 
     return (
@@ -70,10 +87,11 @@ const LoginModal = ({ isOpen, onClose, onLogin }) => {
                     <CloseIcon color={currentTheme.text} />
                 </button>
                 <h2 style={styles.title}>{isSignup ? 'Create Account' : 'Welcome Back'}</h2>
-                <form onSubmit={handleLogin} style={styles.form}>
+                <form onSubmit={handleSubmit} style={styles.form}>
                     {isSignup && <input name="name" type="text" placeholder="Your Name" style={styles.input} required />}
-                    <input type="email" placeholder="Email Address" style={styles.input} required />
-                    <input type="password" placeholder="Password" style={styles.input} required />
+                    <input name="email" type="email" placeholder="Email Address" style={styles.input} required />
+                    <input name="password" type="password" placeholder="Password" style={styles.input} required />
+                    {error && <p style={{ color: 'red', textAlign: 'center' }}>{error}</p>}
                     <button type="submit" style={styles.submitButton}>
                         {isSignup ? 'Sign Up' : 'Login'}
                     </button>
@@ -88,6 +106,7 @@ const LoginModal = ({ isOpen, onClose, onLogin }) => {
         </div>
     );
 };
+
 
 // --- Home Page & About Page Components ---
 const HomePage = ({ onNavigate, onLogin, isLoggedIn, userName }) => {
@@ -181,17 +200,20 @@ const Footer = () => {
 // ------------------ PDF Chat Page and its Children ------------------
 
 // --- Session History Sidebar ---
-const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId }) => {
+const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId, userToken }) => {
     const [sessions, setSessions] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const { currentTheme } = useTheme();
     const styles = getPdfChatStyles(currentTheme);
 
     useEffect(() => {
+        if (!userToken) return;
         const fetchSessions = async () => {
             setIsLoading(true);
             try {
-                const response = await axios.get('http://localhost:8000/sessions/');
+                const response = await axios.get('http://localhost:8000/sessions/', {
+                    headers: { 'Authorization': userToken }
+                });
                 const sortedSessions = response.data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                 setSessions(sortedSessions);
             } catch (error) {
@@ -201,7 +223,7 @@ const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId }) 
             }
         };
         fetchSessions();
-    }, [activeSessionId]);
+    }, [activeSessionId, userToken]);
 
     return (
         <div style={styles.historySidebar}>
@@ -229,7 +251,8 @@ const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId }) 
     );
 };
 
-const PdfChatPage = () => {
+
+const PdfChatPage = ({ userToken }) => {
     const styles = getPdfChatStyles(useTheme().currentTheme);
 
     const [sessionId, setSessionId] = useState(null);
@@ -251,7 +274,60 @@ const PdfChatPage = () => {
     const [selectionInsights, setSelectionInsights] = useState(null);
     const [isSelectionLoading, setIsSelectionLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('analysis'); // 'analysis' or 'selection'
+    // const [isProcessing, setIsProcessing] = useState(false); // New state for background processing
+    
 
+    // const handleBulkUpload = async () => {
+    //     if (pdfs.length === 0) {
+    //         setError('Please upload PDFs for bulk processing.');
+    //         return;
+    //     }
+    //     setIsProcessing(true);
+    //     setError('');
+    //     const formData = new FormData();
+    //     pdfs.forEach(pdfFile => formData.append('files', pdfFile));
+
+    //     try {
+    //         await axios.post('http://localhost:8000/analyze/', formData, {
+    //             headers: {
+    //                 'Content-Type': 'multipart/form-data',
+    //                 'Authorization': userToken
+    //             },
+    //         });
+    //         // Give user feedback
+    //         alert('Your documents are being processed in the background. You will be notified when it is complete.');
+    //     } catch (err) {
+    //         setError('Failed to start background processing.');
+    //     } finally {
+    //         setIsProcessing(false);
+    //     }
+    // };
+    
+    // const handleConnectTheDots = async () => {
+    //     if (pdfs.length !== 1) {
+    //         setError('Please upload a single new document to connect.');
+    //         return;
+    //     }
+    //     setLoading(true);
+    //     setError('');
+    //     const formData = new FormData();
+    //     formData.append('file', pdfs[0]);
+
+    //     try {
+    //         const response = await axios.post('http://localhost:8000/connect-dots/', formData, {
+    //             headers: {
+    //                 'Content-Type': 'multipart/form-data',
+    //                 'Authorization': userToken
+    //             }
+    //         });
+    //         // Display the insights
+    //         setMessages([{ role: 'bot', content: response.data.insights }]);
+    //     } catch (err) {
+    //         setError('Failed to connect the dots.');
+    //     } finally {
+    //         setLoading(false);
+    //     }
+    // };
 
     const handlePDFSelect = (pdf) => {
         if (selectedPDF?.name !== pdf.name) {
@@ -278,6 +354,7 @@ const PdfChatPage = () => {
         setLoading(true);
         setError('');
         setTranslatedInsights(null);
+        setAnalysisResult(null); // Clear previous results
 
         const formData = new FormData();
         formData.append('persona', persona);
@@ -290,7 +367,10 @@ const PdfChatPage = () => {
 
         try {
             const response = await axios.post('http://localhost:8000/analyze/', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
+                headers: { 
+                    'Content-Type': 'multipart/form-data',
+                    'Authorization': userToken 
+                },
             });
 
             setSessionId(response.data.sessionId);
@@ -314,6 +394,8 @@ const PdfChatPage = () => {
             const response = await axios.post('http://localhost:8000/chat/', {
                 sessionId: sessionId,
                 query: msg,
+            }, {
+                headers: { 'Authorization': userToken }
             });
             setMessages(prev => [...prev, response.data]);
         } catch (err) {
@@ -329,7 +411,9 @@ const PdfChatPage = () => {
         setError('');
         setTranslatedInsights(null);
         try {
-            const response = await axios.get(`http://localhost:8000/sessions/${selectedSessionId}`);
+            const response = await axios.get(`http://localhost:8000/sessions/${selectedSessionId}`, {
+                headers: { 'Authorization': userToken }
+            });
             const sessionData = response.data;
             setSessionId(selectedSessionId);
             setAnalysisResult(sessionData.analysis);
@@ -399,6 +483,8 @@ const PdfChatPage = () => {
         try {
             const response = await axios.post('http://localhost:8000/insights-on-selection', {
                 text: selectedText,
+            }, {
+                headers: { 'Authorization': userToken }
             });
             setSelectionInsights(response.data);
         } catch (err) {
@@ -416,7 +502,11 @@ const PdfChatPage = () => {
                 onSelectSession={handleSelectSession}
                 onNewChat={handleNewChat}
                 activeSessionId={sessionId}
+                userToken={userToken}
             />
+            
+            
+
             <div style={styles.mainContent}>
                 <div style={styles.viewerPanel}>
                     {filePromise && selectedPDF ? ( // ERROR FIX: Ensure selectedPDF is not null
@@ -470,6 +560,7 @@ const PdfChatPage = () => {
                             isSelectionLoading={isSelectionLoading}
                             activeTab={activeTab}
                             setActiveTab={setActiveTab}
+                            userToken={userToken}
                         />
                     )}
                 </div>
@@ -581,7 +672,8 @@ const AnimatedBotMessage = ({ message }) => {
 const ChatAndAnalysisSection = ({
     messages, onSendMessage, loading, analysisResult, onInsightClick,
     translatedInsights, setTranslatedInsights, sessionId,
-    selectionInsights, isSelectionLoading, activeTab, setActiveTab
+    selectionInsights, isSelectionLoading, activeTab, setActiveTab,
+    userToken
 }) => {
   const { currentTheme } = useTheme();
   const styles = getPdfChatStyles(currentTheme);
@@ -606,7 +698,9 @@ const ChatAndAnalysisSection = ({
     setIsTranslatingAll(true);
     setTranslationError('');
     try {
-        const response = await axios.post('http://localhost:8000/translate-insights/', { sessionId });
+        const response = await axios.post('http://localhost:8000/translate-insights/', { sessionId }, {
+            headers: { 'Authorization': userToken }
+        });
         setTranslatedInsights(response.data.translated_insights);
     } catch (err) {
         setTranslationError('Failed to translate insights to Hindi.');
@@ -624,7 +718,10 @@ const ChatAndAnalysisSection = ({
         const response = await axios.post('http://localhost:8000/generate-podcast/', {
             analysis_data: analysisResult,
             language: podcastLanguage
-        }, { responseType: 'blob' });
+        }, { 
+            responseType: 'blob',
+            headers: { 'Authorization': userToken }
+        });
 
         const url = URL.createObjectURL(response.data);
         setAudioUrl(url);
@@ -791,25 +888,32 @@ const useTheme = () => useContext(ThemeContext);
 // --- Main App Router ---
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userName, setUserName] = useState('');
+  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('userToken'));
+  const [userName, setUserName] = useState(localStorage.getItem('userName') || '');
+  const [userToken, setUserToken] = useState(localStorage.getItem('userToken') || '');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const handleLogin = (name) => {
+  const handleLogin = (name, token) => {
+      localStorage.setItem('userName', name);
+      localStorage.setItem('userToken', token);
       setIsLoggedIn(true);
       setUserName(name);
+      setUserToken(token);
       setIsModalOpen(false);
   };
   const handleLogout = () => {
+      localStorage.removeItem('userName');
+      localStorage.removeItem('userToken');
       setIsLoggedIn(false);
       setUserName('');
+      setUserToken('');
       setCurrentPage('home');
   };
 
   const renderPage = () => {
       switch (currentPage) {
           case 'chat':
-              return isLoggedIn ? <PdfChatPage /> : <HomePage onNavigate={setCurrentPage} onLogin={handleLogin} isLoggedIn={isLoggedIn} userName={userName} />;
+              return isLoggedIn ? <PdfChatPage userToken={userToken} /> : <HomePage onNavigate={setCurrentPage} onLogin={handleLogin} isLoggedIn={isLoggedIn} userName={userName} />;
           case 'about':
               return <AboutUsPage />;
           case 'home':

@@ -1,40 +1,57 @@
-# session_manager.py
 import json
 import uuid
 import logging
 from typing import List, Dict, Any, Optional
 
 from redis_client import get_redis_client
+from auth import verify_password
 
 # --- Constants for Redis Keys ---
-# Using constants avoids "magic strings" and makes key management easier.
 SESSION_META_PREFIX = "session:meta:"
 SESSION_HISTORY_PREFIX = "session:history:"
 SESSION_ANALYSIS_PREFIX = "session:analysis:"
 SESSION_FILES_PREFIX = "session:files:"
+USER_PREFIX = "user:"
+USER_SUMMARIES_PREFIX = "user:summaries:" # Added for summaries
 
-
-# --- Setup Logging ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# --- User Management Functions ---
 
-def create_session(analysis_result: Dict[str, Any]) -> Optional[str]:
-    """
-    Creates a new chat session in Redis using an optimized data structure.
+def create_user(email: str, hashed_password: str, name: str):
+    redis = get_redis_client()
+    if not redis:
+        logger.error("❌ Redis client is not available. Failed to create user.")
+        return None
+    
+    user_key = f"{USER_PREFIX}{email}"
+    redis.hset(user_key, mapping={
+        "email": email,
+        "hashed_password": hashed_password,
+        "name": name
+    })
 
-    Instead of one large JSON blob, we use:
-    - A Hash for metadata (fast field access).
-    - A List for chat history (fast appends).
-    - A String for the large analysis result.
+def get_user(email: str) -> Optional[Dict[str, Any]]:
+    redis = get_redis_client()
+    if not redis:
+        return None
+    
+    user_key = f"{USER_PREFIX}{email}"
+    user_data = redis.hgetall(user_key)
+    return user_data if user_data else None
 
-    Args:
-        analysis_result: The initial analysis data for the session.
+def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
+    user = get_user(email)
+    if not user:
+        return None
+    if not verify_password(password, user['hashed_password']):
+        return None
+    return user
 
-    Returns:
-        The unique session ID, or None if Redis is unavailable.
-    """
+# --- Session and Summary Management ---
 
+def create_session(analysis_result: Dict[str, Any], user_id: str) -> Optional[str]:
     redis = get_redis_client()
     if not redis:
         logger.error("❌ Redis client is not available. Failed to create session.")
@@ -42,49 +59,36 @@ def create_session(analysis_result: Dict[str, Any]) -> Optional[str]:
 
     session_id = str(uuid.uuid4())
     metadata = analysis_result.get("metadata", {})
+    metadata['user_id'] = user_id
 
-    # Use a Redis transaction (pipeline) for atomicity.
-    # This ensures all commands succeed or none do.
     with redis.pipeline() as pipe:
-        # 1. Store metadata in a Hash for efficient field retrieval
         meta_key = f"{SESSION_META_PREFIX}{session_id}"
         pipe.hset(meta_key, mapping={
             "persona": metadata.get("persona", ""),
             "job_to_be_done": metadata.get("job_to_be_done", ""),
             "processing_timestamp": metadata.get("processing_timestamp", ""),
             "language": metadata.get("language", "en"),
-            "doc_count": len(metadata.get("input_documents", []))
+            "doc_count": len(metadata.get("input_documents", [])),
+            "user_id": user_id
         })
 
-        # 2. Store the large, read-only analysis result in a simple key
         analysis_key = f"{SESSION_ANALYSIS_PREFIX}{session_id}"
         pipe.set(analysis_key, json.dumps(analysis_result))
         
-        # 3. Initialize the chat history (not strictly needed, but good practice)
-        history_key = f"{SESSION_HISTORY_PREFIX}{session_id}"
-        # This command is commented out as it is not necessary to initialize an empty list
-        # pipe.rpush(history_key, "INIT") 
-        # pipe.lpop(history_key, "INIT")
         files_key = f"{SESSION_FILES_PREFIX}{session_id}"
         file_paths = metadata.get("file_paths", [])
         if file_paths:
             pipe.rpush(files_key, *file_paths)
+        
+        user_sessions_key = f"user:{user_id}:sessions"
+        pipe.sadd(user_sessions_key, session_id)
+
         pipe.execute()
 
-    logger.info(f"✅ New session created with optimized structure. ID: {session_id}")
+    logger.info(f"✅ New session created for user {user_id}. ID: {session_id}")
     return session_id
 
-
 def get_session(session_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Retrieves and reconstructs a full session from Redis.
-
-    Args:
-        session_id: The ID of the session to retrieve.
-
-    Returns:
-        A dictionary containing the session data, or None if not found.
-    """
     redis = get_redis_client()
     if not redis:
         return None
@@ -96,28 +100,18 @@ def get_session(session_id: str) -> Optional[Dict[str, Any]]:
     files_key = f"{SESSION_FILES_PREFIX}{session_id}"
     file_paths = redis.lrange(files_key, 0, -1)
     if not analysis_data_json:
-        return None  # Session does not exist
+        return None
 
-    # Fetch chat history and decode messages from JSON
     chat_history_raw = redis.lrange(history_key, 0, -1)
     chat_history = [json.loads(msg) for msg in chat_history_raw]
 
     return {
-    "analysis": json.loads(analysis_data_json),
-    "chat_history": chat_history,
-    "file_paths": file_paths  # <-- Add this
-}
-
+        "analysis": json.loads(analysis_data_json),
+        "chat_history": chat_history,
+        "file_paths": file_paths
+    }
 
 def add_message_to_history(session_id: str, message: Dict[str, str]):
-    """
-    Adds a new message to a session's chat history efficiently using RPUSH.
-    This avoids the slow read-modify-write pattern.
-
-    Args:
-        session_id: The ID of the session to update.
-        message: The message to add (e.g., {"role": "user", "content": "..."}).
-    """
     redis = get_redis_client()
     if not redis:
         return
@@ -125,38 +119,28 @@ def add_message_to_history(session_id: str, message: Dict[str, str]):
     history_key = f"{SESSION_HISTORY_PREFIX}{session_id}"
     redis.rpush(history_key, json.dumps(message))
 
-
-def get_all_sessions_metadata() -> List[Dict[str, Any]]:
-    """
-    Retrieves metadata for all sessions efficiently.
-    
-    - Uses SCAN instead of KEYS to avoid blocking production servers.
-    - Fetches only the small metadata hashes, not the entire session objects.
-    """
+def get_all_sessions_metadata_for_user(user_id: str) -> List[Dict[str, Any]]:
     redis = get_redis_client()
     if not redis:
         return []
 
-    sessions_metadata = []
-    # Use scan_iter for safe iteration over keys in production
-    # The variable is renamed to 'key' since it's now a string.
-    for key in redis.scan_iter(f"{SESSION_META_PREFIX}*"):
-        # The key is already a string, so we just replace the prefix.
-        session_id = key.replace(SESSION_META_PREFIX, "")
-        
-        # Fetch the metadata hash. The keys and values will also be strings.
-        metadata = redis.hgetall(key)
-        
-        # Build the dictionary using string keys and values (no .decode() needed)
-        sessions_metadata.append({
-            "id": session_id,
-            "persona": metadata.get('persona', ''),
-            "job": metadata.get('job_to_be_done', ''),
-            "timestamp": metadata.get('processing_timestamp', ''),
-            "doc_count": int(metadata.get('doc_count', 0))
-        })
+    user_sessions_key = f"user:{user_id}:sessions"
+    session_ids = redis.smembers(user_sessions_key)
     
-    # Robustly sort by timestamp, newest first
+    sessions_metadata = []
+    for session_id in session_ids:
+        meta_key = f"{SESSION_META_PREFIX}{session_id}"
+        metadata = redis.hgetall(meta_key)
+        
+        if metadata:
+            sessions_metadata.append({
+                "id": session_id,
+                "persona": metadata.get('persona', ''),
+                "job": metadata.get('job_to_be_done', ''),
+                "timestamp": metadata.get('processing_timestamp', ''),
+                "doc_count": int(metadata.get('doc_count', 0))
+            })
+    
     sessions_metadata.sort(
         key=lambda x: x.get('timestamp') or '1970-01-01T00:00:00Z', 
         reverse=True
@@ -164,39 +148,62 @@ def get_all_sessions_metadata() -> List[Dict[str, Any]]:
     
     return sessions_metadata
 
-
-# In session_manager.py
-
 def update_session(session_id: str, analysis_result: Dict[str, Any]):
-    """
-    Updates an existing session with new analysis data, overwriting the old
-    analysis and clearing the chat history.
-    """
     redis = get_redis_client()
     if not redis:
         logger.error("❌ Redis client is not available. Failed to update session.")
         return
 
+    meta_key = f"{SESSION_META_PREFIX}{session_id}"
+    user_id = redis.hget(meta_key, "user_id")
+
     metadata = analysis_result.get("metadata", {})
+    metadata['user_id'] = user_id
+    
     with redis.pipeline() as pipe:
-        # Update metadata
-        meta_key = f"{SESSION_META_PREFIX}{session_id}"
         pipe.hset(meta_key, mapping={
             "persona": metadata.get("persona", ""),
             "job_to_be_done": metadata.get("job_to_be_done", ""),
             "processing_timestamp": metadata.get("processing_timestamp", ""),
             "language": metadata.get("language", "en"),
-            "doc_count": len(metadata.get("input_documents", []))
+            "doc_count": len(metadata.get("input_documents", [])),
+            "user_id": user_id
         })
 
-        # Overwrite analysis data
         analysis_key = f"{SESSION_ANALYSIS_PREFIX}{session_id}"
         pipe.set(analysis_key, json.dumps(analysis_result))
 
-        # Clear old chat history
         history_key = f"{SESSION_HISTORY_PREFIX}{session_id}"
         pipe.delete(history_key)
 
         pipe.execute()
 
     logger.info(f"✅ Session updated with new analysis. ID: {session_id}")
+
+def store_summary(user_id: str, file_name: str, summary: str):
+    """Stores a document summary in Redis."""
+    redis = get_redis_client()
+    if not redis:
+        logger.error("❌ Redis client is not available. Failed to store summary.")
+        return
+    summary_key = f"{USER_SUMMARIES_PREFIX}{user_id}"
+    redis.hset(summary_key, file_name, summary)
+    logger.info(f"✅ Summary stored for user {user_id}, file: {file_name}")
+
+def get_all_summaries_for_user(user_id: str) -> Dict[str, str]:
+    """Retrieves all document summaries for a user from Redis."""
+    redis = get_redis_client()
+    if not redis:
+        return {}
+    summary_key = f"{USER_SUMMARIES_PREFIX}{user_id}"
+    summaries = redis.hgetall(summary_key)
+    return {k: v for k, v in summaries.items()}
+
+def check_existing_summaries(user_id: str, file_names: List[str]) -> Dict[str, bool]:
+    """Checks which of the given filenames already have a summary in Redis."""
+    redis = get_redis_client()
+    if not redis:
+        return {name: False for name in file_names}
+    
+    summary_key = f"{USER_SUMMARIES_PREFIX}{user_id}"
+    return {name: redis.hexists(summary_key, name) for name in file_names}

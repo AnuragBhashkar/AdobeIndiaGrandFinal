@@ -11,27 +11,38 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+import logging
 
 # --- Local Imports ---
-# Ensure these files exist in your project structure
 from redis_client import get_redis_client
 from session_manager import (
     create_session,
     get_session,
     add_message_to_history,
-    get_all_sessions_metadata,
-    update_session 
+    get_all_sessions_metadata_for_user,
+    update_session,
+    create_user,
+    get_user,
+    authenticate_user,
+    store_summary,
+    get_all_summaries_for_user,
+    check_existing_summaries
 )
+from auth import get_password_hash
 
 # --- TTS Library Imports ---
 import azure.cognitiveservices.speech as speechsdk
 import pyttsx3
 
-# Load environment variables from .env file
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 # --- Pydantic Models ---
 class ChatRequest(BaseModel):
@@ -48,23 +59,30 @@ class TranslateInsightsRequest(BaseModel):
 class SelectionInsightsRequest(BaseModel):
     text: str
 
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    name: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
 # --- Initialize FastAPI App ---
 app = FastAPI(
     title="PDF Intelligence API",
     description="API for persona-driven PDF analysis, chat, and multi-language audio summaries, powered by Gemini 1.5 Flash.",
-    version="2.5.1" # Version bump for bug fix
+    version="3.1.3" # Enhanced reasoning prompt
 )
-# Create a directory for storing session files if it doesn't exist
 SESSION_FILES_DIR = "session_files"
 os.makedirs(SESSION_FILES_DIR, exist_ok=True)
-
 
 app.mount("/session_files", StaticFiles(directory=SESSION_FILES_DIR), name="session_files")
 
 # --- Add CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"], # Adjust for your frontend URL
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -78,35 +96,29 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 # --- App Startup Event ---
 @app.on_event("startup")
 async def startup_event():
-    """Initializes the Redis client when the application starts."""
     get_redis_client()
     if not GEMINI_API_KEY:
         print("CRITICAL WARNING: GEMINI_API_KEY environment variable is not set!")
     print("Application startup complete.")
 
 # ==============================================================================
-# Helper Functions
+# Authentication Dependency
 # ==============================================================================
 
-def deep_merge_dicts(d1: dict, d2: dict) -> dict:
-    """
-    Recursively merges d2 into d1. Modifies d1 in place.
-    """
-    for k, v in d2.items():
-        if k in d1 and isinstance(d1[k], dict) and isinstance(v, dict):
-            deep_merge_dicts(d1[k], v)
-        else:
-            d1[k] = v
-    return d1
+async def get_current_user(authorization: str = Header(...)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing")
+    
+    user_email = authorization
+    user = get_user(user_email)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+    return user
 
 # ==============================================================================
-# Centralized Gemini API Caller with Exponential Backoff
+# Centralized Gemini API Caller
 # ==============================================================================
-
 async def call_gemini_api(payload: Dict[str, Any], timeout: float = 120.0) -> Dict[str, Any]:
-    """
-    Centralized function to call the Gemini API with error handling and exponential backoff.
-    """
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="Gemini API key is not configured on the server.")
 
@@ -118,39 +130,40 @@ async def call_gemini_api(payload: Dict[str, Any], timeout: float = 120.0) -> Di
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(api_url, json=payload)
-                if response.status_code == 429:
-                    wait_time = (base_wait_time * (2 ** attempt)) + random.uniform(0, 1)
-                    print(f"WARNING: Rate limit exceeded (429). Retrying in {wait_time:.2f} seconds...")
-                    await asyncio.sleep(wait_time)
-                    continue
                 response.raise_for_status()
                 return response.json()
-        except httpx.ReadTimeout:
-            print(f"ERROR: Gemini API call timed out after {timeout} seconds.")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                wait_time = (base_wait_time * (2 ** attempt)) + random.uniform(0, 1)
+                logger.warning(f"Rate limit exceeded (429). Retrying in {wait_time:.2f} seconds...")
+                await asyncio.sleep(wait_time)
+                continue
+            raise e
+        except (httpx.ReadTimeout, httpx.RequestError) as e:
             if attempt < max_retries - 1:
                 await asyncio.sleep(1)
                 continue
-            raise HTTPException(status_code=504, detail="The request to the AI model timed out.")
-        except httpx.RequestError as e:
-            print(f"ERROR: An HTTP request error occurred: {e}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(1)
-                continue
-            raise HTTPException(status_code=503, detail=f"Could not connect to the AI service: {e}")
-        except Exception as e:
-            print(f"ERROR: An unexpected error occurred during the Gemini API call: {e}")
-            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
-    raise HTTPException(status_code=503, detail="The AI service is currently unavailable after multiple retries.")
+            raise HTTPException(status_code=504, detail=f"AI service request failed: {e}")
+    raise HTTPException(status_code=503, detail="The AI service is unavailable after multiple retries.")
+
 
 # ==============================================================================
-# Core Analysis Function (Single Prompt)
+# Core Analysis & Summarization Functions
 # ==============================================================================
+async def generate_summary_for_text(text: str) -> str:
+    """Generates a concise summary for a given block of text."""
+    if not text.strip():
+        return ""
+    prompt = f"Summarize the key information in the following text in 3-4 sentences.\n\n---\n{text}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    try:
+        response = await call_gemini_api(payload)
+        return response['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e:
+        logger.error(f"Error generating summary: {e}")
+        return ""
 
-async def generate_comprehensive_analysis(full_text_context: str, persona: str, job_to_be_done: str) -> Dict[str, Any]:
-    """
-    Generates a complete analysis from the full text of documents in a single prompt.
-    This function identifies top sections and generates insights simultaneously.
-    """
+async def generate_connected_analysis(full_text_context: str, persona: str, job_to_be_done: str) -> Dict[str, Any]:
     json_schema = {
         "type": "OBJECT",
         "properties": {
@@ -184,20 +197,22 @@ async def generate_comprehensive_analysis(full_text_context: str, persona: str, 
 
     prompt = f"""
     You are an expert research assistant acting as a '{persona}' whose goal is to '{job_to_be_done}'.
-    Analyze the full text from the documents provided below.
+    Analyze the provided context, which may contain full text from new documents and summaries of old documents.
 
-    **Your Tasks:**
-    1.  **Identify Top 3 Sections:** From all the text, identify the top 3 most relevant sections that directly help with your goal. For each, provide the document name, a likely page number, a title for the section, a direct quote for the 'subsection_analysis' of 4-5 lines, and a brief reasoning for its importance.
-    2.  **Generate Insights:** Based on your analysis of the entire document set, provide the following, with each category's content being 10-20 lines long:
-        - **key_insights**: 2-3 crucial takeaways.
-        - **did_you_know**: 2-3 surprising or interesting facts, phrased as questions.
-        - **cross_document_connections**: 1-2 connections, contradictions, or counterpoints you found by comparing information across the different documents. If none exist, state that clearly.
+    **Your Reasoning Process:**
 
-    **Full Text from Documents:**
+    1.  **Assess Relevance:** First, review the user's goal: '{job_to_be_done}'. Now, read through all the provided document summaries and full texts. Decide which documents are relevant to this goal and which are not.
+
+    2.  **Extract Initial Insights:** From the documents you identified as RELEVANT, extract the top 3-5 most important sections that directly address the user's goal. These will populate the 'top_sections' of the JSON response. If a new document is provided but is irrelevant, you should pull the top sections from the older, relevant documents instead.
+
+    3.  **Synthesize Connected Insights:** Now, consider all the RELEVANT documents together (both new and old). Generate the deeper insights for the 'llm_insights' section.
+        - **cross_document_connections**: This is the most critical part. Find connections, patterns, or contradictions between all the relevant materials. Explicitly state which documents you used and which you ignored (and why). For example: "I have ignored Lunch.pdf as it was not relevant to the goal of creating a dinner menu."
+
+    **Provided Context:**
     {full_text_context}
 
     **Instructions:**
-    Respond ONLY with a single JSON object that strictly adheres to the specified schema. Do not include any additional text, explanations, or markdown formatting.
+    Respond ONLY with a single JSON object that strictly adheres to the specified schema. Your response must be based on fulfilling the user's goal using only the relevant documents from the context.
     """
 
     payload = {
@@ -209,118 +224,123 @@ async def generate_comprehensive_analysis(full_text_context: str, persona: str, 
         response_json = await call_gemini_api(payload)
         return json.loads(response_json['candidates'][0]['content']['parts'][0]['text'])
     except Exception as e:
-        print(f"ERROR: Failed to generate comprehensive analysis: {e}")
-        # Return a structured error to avoid breaking the frontend
+        logger.error(f"Failed to generate connected analysis: {e}")
         return {
             "top_sections": [],
             "llm_insights": {
-                "key_insights": [f"Failed to generate insights: {e}"],
+                "key_insights": [f"Error during analysis: {e}"],
                 "did_you_know": [],
-                "cross_document_connections": []
+                "cross_document_connections": ["Could not establish connections due to an error."]
             }
         }
 
-async def run_pipeline(persona: str, job_to_be_done: str, pdf_dir: str) -> Dict[str, Any]:
-    """The main analysis pipeline, now using a single prompt for analysis."""
-    
-    # Step 1: Extract full text from all PDFs
-    full_text_parts = []
-    file_names = []
-    for filename in os.listdir(pdf_dir):
-        if filename.lower().endswith(".pdf"):
-            file_path = os.path.join(pdf_dir, filename)
-            file_names.append(filename)
-            try:
-                doc = fitz.open(file_path)
-                full_text_parts.append(f"--- START OF DOCUMENT: {filename} ---\n")
-                for page_num, page in enumerate(doc):
-                    full_text_parts.append(f"== Page {page_num + 1} ==\n")
-                    full_text_parts.append(page.get_text())
-                full_text_parts.append(f"\n--- END OF DOCUMENT: {filename} ---\n\n")
-            except Exception as e:
-                print(f"❌ Error reading {file_path}: {e}")
-                full_text_parts.append(f"--- ERROR READING DOCUMENT: {filename} ---")
-    
-    full_text_context = "".join(full_text_parts)
-
-    # Step 2: Initialize a default structure to guarantee keys exist for the frontend.
-    final_result = {
-        "metadata": {
-            "input_documents": file_names,
-            "persona": persona,
-            "job_to_be_done": job_to_be_done,
-            "processing_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
-        },
-        # Ensure these keys always exist for the frontend to prevent crashes
-        "top_sections": [],
-        "llm_insights": {
-            "key_insights": [],
-            "did_you_know": [],
-            "cross_document_connections": []
-        }
-    }
-
-    # Step 3: Generate comprehensive analysis in a single API call
-    analysis_result = await generate_comprehensive_analysis(full_text_context, persona, job_to_be_done)
-
-    # Step 4: Safely perform a deep merge of the results into the default structure.
-    if analysis_result:
-        final_result = deep_merge_dicts(final_result, analysis_result)
-    # print(final_result)
-    return final_result
 
 # ==============================================================================
 #  API Endpoints
 # ==============================================================================
 
-@app.post("/analyze/")
-async def analyze_documents(files: List[UploadFile] = File(...), persona: str = Form(...), job_to_be_done: str = Form(...), sessionId: str = Form(None)):
-    if not get_redis_client():
-        raise HTTPException(status_code=503, detail="Redis service is unavailable.")
+@app.post("/register")
+async def register_user(user: UserCreate):
+    db_user = get_user(user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_password = get_password_hash(user.password)
+    create_user(user.email, hashed_password, user.name)
+    return {"message": "User created successfully"}
 
-    # If it's a new session, create a unique directory for its files
+@app.post("/login")
+async def login_for_access_token(user: UserLogin):
+    authenticated_user = authenticate_user(user.email, user.password)
+    if not authenticated_user:
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    
+    return {"access_token": user.email, "token_type": "bearer", "user_name": authenticated_user['name']}
+
+
+@app.post("/analyze/")
+async def analyze_documents(
+    files: List[UploadFile] = File(...), 
+    persona: str = Form(...), 
+    job_to_be_done: str = Form(...), 
+    sessionId: str = Form(None),
+    current_user: dict = Depends(get_current_user)
+):
+    user_email = current_user['email']
+    if not get_redis_client():
+        raise HTTPException(status_code=503, detail="Database service is unavailable.")
+
+    uploaded_filenames = [f.filename for f in files]
+    existing_status = check_existing_summaries(user_email, uploaded_filenames)
+    
+    new_files = [f for f in files if not existing_status.get(f.filename)]
+    old_filenames = [name for name, exists in existing_status.items() if exists]
+
+    context_parts = []
+    
+    if old_filenames:
+        all_summaries = get_all_summaries_for_user(user_email)
+        old_summaries = {name: all_summaries.get(name) for name in old_filenames}
+        for name, summary in old_summaries.items():
+            context_parts.append(f"--- START OF SUMMARY for {name} ---\n{summary}\n--- END OF SUMMARY for {name} ---\n")
+
+    new_file_texts = {}
+    for file in new_files:
+        try:
+            file_bytes = await file.read()
+            with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+                text = "".join(page.get_text() for page in doc)
+                new_file_texts[file.filename] = text
+                context_parts.append(f"--- START OF FULL TEXT for {file.filename} ---\n{text}\n--- END OF FULL TEXT for {file.filename} ---\n")
+        except Exception as e:
+            logger.error(f"Error reading new file {file.filename}: {e}")
+            raise HTTPException(status_code=400, detail=f"Could not process file: {file.filename}")
+
+    if not context_parts:
+        raise HTTPException(status_code=400, detail="No content available for analysis.")
+
+    full_text_context = "\n".join(context_parts)
+    
+    analysis_result = await generate_connected_analysis(full_text_context, persona, job_to_be_done)
+
+    for filename, text in new_file_texts.items():
+        summary = await generate_summary_for_text(text)
+        if summary:
+            store_summary(user_email, filename, summary)
+
     session_dir_name = sessionId if sessionId else str(uuid.uuid4())
     session_path = os.path.join(SESSION_FILES_DIR, session_dir_name)
     os.makedirs(session_path, exist_ok=True)
-
+    
     file_paths = []
-    temp_dir = f"temp_{uuid.uuid4()}"
-    os.makedirs(temp_dir)
-    try:
-        for file in files:
-            # Save files to the session-specific directory
-            file_location = os.path.join(session_path, file.filename)
-            with open(file_location, "wb+") as file_object:
-                file_object.write(file.file.read())
-            # Store the web-accessible path
-            file_paths.append(f"/session_files/{session_dir_name}/{file.filename}")
+    for file in files:
+        file_location = os.path.join(session_path, file.filename)
+        await file.seek(0)
+        with open(file_location, "wb+") as file_object:
+            file_object.write(await file.read())
+        file_paths.append(f"/session_files/{session_dir_name}/{file.filename}")
+    
+    analysis_result["metadata"] = {
+        "input_documents": uploaded_filenames,
+        "persona": persona,
+        "job_to_be_done": job_to_be_done,
+        "processing_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "file_paths": file_paths
+    }
 
-            # Also save to a temporary directory for immediate analysis
-            temp_file_location = os.path.join(temp_dir, file.filename)
-            with open(temp_file_location, "wb") as buffer:
-                 with open(file_location, "rb") as f:
-                    buffer.write(f.read())
+    if sessionId:
+        update_session(sessionId, analysis_result)
+        current_session_id = sessionId
+    else:
+        current_session_id = create_session(analysis_result, user_email)
+        if not current_session_id:
+            raise HTTPException(status_code=500, detail="Failed to create a new session.")
+            
+    return JSONResponse(content={"sessionId": current_session_id, "analysis": analysis_result})
 
-
-        analysis_result = await run_pipeline(persona=persona, job_to_be_done=job_to_be_done, pdf_dir=temp_dir)
-        # Add the file paths to the metadata before creating the session
-        analysis_result["metadata"]["file_paths"] = file_paths
-
-        if sessionId:
-            update_session(sessionId, analysis_result)
-            current_session_id = sessionId
-        else:
-            current_session_id = create_session(analysis_result)
-            if not current_session_id:
-                raise HTTPException(status_code=500, detail="Failed to create a new session.")
-
-        return JSONResponse(content={"sessionId": current_session_id, "analysis": analysis_result})
-    finally:
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
 
 @app.post("/chat/")
-async def chat_with_documents(request: ChatRequest):
+async def chat_with_documents(request: ChatRequest, current_user: dict = Depends(get_current_user)):
     session_data = get_session(request.sessionId)
     if not session_data:
         raise HTTPException(status_code=404, detail="Chat session not found.")
@@ -337,20 +357,17 @@ async def chat_with_documents(request: ChatRequest):
     bot_message = {"role": "bot", "content": bot_response_content}
     add_message_to_history(request.sessionId, bot_message)
     return JSONResponse(content=bot_message)
-
-# --- CORRECTED ENDPOINT for Selected Text Insights ---
+    
 @app.post("/insights-on-selection")
-async def get_insights_on_selection(request: SelectionInsightsRequest):
-    """
-    Generates insights on a specific piece of selected text.
-    """
+async def get_insights_on_selection(request: SelectionInsightsRequest, current_user: dict = Depends(get_current_user)):
     prompt = f"""
-    You are an expert research assistant. Your task is to analyze the provided documents and deliver a structured analysis of related sections and subsections across all the documents.
+    You are an expert research assistant. Your task is to analyze the provided text and deliver a structured analysis.
 
     **Instructions:**
-    1.  **Identify Core Themes:** Read through the documents to identify the main themes or topics that connect different sections.
-    2.  **Group and Analyze:** For each theme, group together all the relevant sections and subsections from the documents.
-    3.  **Provide a Cohesive Summary:** Synthesize the information from the grouped sections into a concise analysis that explains the theme and how the different sections relate to it.
+    1.  **Provide a Cohesive Summary:** Synthesize the information from the text into a concise summary.
+    2.  **Extract Key Takeaways:** List the most important points or conclusions.
+    3.  **Formulate Potential Questions:** Based on the text, what are some logical follow-up questions a user might have?
+
 
     **Text for Analysis:**
     ---
@@ -378,52 +395,33 @@ async def get_insights_on_selection(request: SelectionInsightsRequest):
     try:
         response_json = await call_gemini_api(payload)
         insights = json.loads(response_json['candidates'][0]['content']['parts'][0]['text'])
-        print(insights)
         return JSONResponse(content=insights)
-
     except Exception as e:
-        print(f"ERROR: Failed to generate insights on selection: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate insights: {e}")
 
-
 @app.get("/sessions/")
-async def get_sessions_list():
-    metadata = get_all_sessions_metadata()
+async def get_sessions_list(current_user: dict = Depends(get_current_user)):
+    user_email = current_user['email']
+    metadata = get_all_sessions_metadata_for_user(user_email)
     return JSONResponse(content=metadata)
 
 @app.get("/sessions/{session_id}")
-async def get_session_details(session_id: str):
+async def get_session_details(session_id: str, current_user: dict = Depends(get_current_user)):
     session_data = get_session(session_id)
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found.")
-    return JSONResponse(content=session_data)
+    
+    if session_data['analysis']['metadata'].get('user_id') != current_user['email']:
+        raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
+    return JSONResponse(content=session_data)
 
 # ==============================================================================
 #  Translation & Podcast Endpoints
 # ==============================================================================
 
-async def translate_batch_gemini(insights_dict: Dict[str, List[str]], target_language: str) -> Dict[str, List[str]]:
-    language_name = SUPPORTED_LANGUAGES.get(target_language)
-    if not language_name: return {"error": "Unsupported language."}
-
-    prompt = f"Translate all the text values in the following JSON object into {language_name}. Maintain the exact same JSON structure and keys. Respond ONLY with the final JSON object.\n\nInput JSON:\n{json.dumps(insights_dict, indent=2)}"
-    json_schema = {
-        "type": "OBJECT",
-        "properties": {key: {"type": "ARRAY", "items": {"type": "STRING"}} for key in insights_dict.keys()},
-        "required": list(insights_dict.keys())
-    }
-    payload = {"contents": [{"parts": [{"text": prompt}]}],"generationConfig": {"responseMimeType": "application/json","responseSchema": json_schema}}
-
-    try:
-        response_json = await call_gemini_api(payload)
-        return json.loads(response_json['candidates'][0]['content']['parts'][0]['text'])
-    except Exception as e:
-        print(f"❌ Batch translation error: {e}")
-        return {"error": f"Failed to translate batch: {e}"}
-
 @app.post("/translate-insights/")
-async def translate_insights_endpoint(request: TranslateInsightsRequest):
+async def translate_insights_endpoint(request: TranslateInsightsRequest, current_user: dict = Depends(get_current_user)):
     session_data = get_session(request.sessionId)
     if not session_data or "analysis" not in session_data:
         raise HTTPException(status_code=404, detail="Session or analysis data not found.")
@@ -437,7 +435,7 @@ async def translate_insights_endpoint(request: TranslateInsightsRequest):
 
     if not insights_for_translation:
         return JSONResponse(content={"message": "No text found in insights to translate."})
-
+        
     translated_insights = await translate_batch_gemini(insights_for_translation, "hi")
     if "error" in translated_insights:
         raise HTTPException(status_code=500, detail=translated_insights["error"])
@@ -462,7 +460,7 @@ async def translate_text_gemini(text: str, target_language: str) -> str:
     return response_json['candidates'][0]['content']['parts'][0]['text']
 
 @app.post("/generate-podcast/")
-async def generate_podcast_endpoint(request: PodcastRequest, background_tasks: BackgroundTasks):
+async def generate_podcast_endpoint(request: PodcastRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
     lang = request.language
     if lang not in SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=400, detail=f"Unsupported language '{lang}'.")
@@ -518,7 +516,7 @@ def text_to_speech_offline(text: str, output_filename: str):
         print(f"❌ Error with offline TTS: {e}")
         return False
 
-# --- Add a simple root endpoint for health checks ---
+
 @app.get("/")
 def read_root():
     return {"status": "ok", "version": app.version}
