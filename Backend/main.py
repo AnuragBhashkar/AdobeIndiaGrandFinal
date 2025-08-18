@@ -92,7 +92,7 @@ app.add_middleware(
 # --- Global Variables & Constants ---
 SUPPORTED_LANGUAGES = { "en": "English", "hi": "Hindi" }
 AZURE_VOICE_MAP = { "en": "en-US-JennyNeural", "hi": "hi-IN-SwaraNeural" }
-GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 # --- App Startup Event ---
 @app.on_event("startup")
@@ -225,22 +225,22 @@ async def generate_connected_analysis(full_text_context: str, persona: str, job_
     You are an expert research assistant acting as a '{persona}' whose goal is to '{job_to_be_done}'.
     Analyze the provided context, which contains the full text from one or more documents.
 
-    **Your Reasoning Process:**
+    *Your Reasoning Process:*
 
-    1.  **Assess Relevance:** First, review the user's goal: '{job_to_be_done}'. Now, read through all the provided document texts. Decide which documents are relevant to this goal and which are not.
+    1.  *Assess Relevance:* First, review the user's goal: '{job_to_be_done}'. Now, read through all the provided document texts. Decide which documents are relevant to this goal and which are not.
 
-    2.  **Extract Initial Insights:** From the documents you identified as RELEVANT, extract the top 5 most important sections that directly address the user's goal. These will populate the 'top_sections' of the JSON response.Also , for each section, provide:subsections as it is from the pdf. When you extract a section, also include the page number.
+    2.  *Extract Initial Insights:* From the documents you identified as RELEVANT, extract the top 5 most important sections that directly address the user's goal. These will populate the 'top_sections' of the JSON response.Also , for each section, provide:subsections as it is from the pdf. When you extract a section, also include the page number.
 The page number is indicated in the provided context between markers like:
 --- START OF PAGE 3 in MyDoc.pdf --- ... --- END OF PAGE 3 in MyDoc.pdf ---.
 Always copy this page number into the "page_number" field in the JSON..
 
-    3.  **Synthesize Connected Insights:** Now, consider all the RELEVANT documents together. Generate the deeper insights for the 'llm_insights' section.
-        - **cross_document_connections**: This is the most critical part. Find connections, patterns, or contradictions between all the relevant materials. Explicitly state which documents you used and which you ignored (and why). For example: "I have ignored Lunch.pdf as it was not relevant to the goal of creating a dinner menu."
+    3.  *Synthesize Connected Insights:* Now, consider all the RELEVANT documents together. Generate the deeper insights for the 'llm_insights' section.
+        - *cross_document_connections*: This is the most critical part. Find connections, patterns, or contradictions between all the relevant materials. Explicitly state which documents you used and which you ignored (and why). For example: "I have ignored Lunch.pdf as it was not relevant to the goal of creating a dinner menu."
 
-    **Provided Context:**
+    *Provided Context:*
     {full_text_context}
 
-    **Instructions:**
+    *Instructions:*
     Respond ONLY with a single JSON object that strictly adheres to the specified schema. Your response must be based on fulfilling the user's goal using only the relevant documents from the context.
     """
 
@@ -401,13 +401,13 @@ async def get_insights_on_selection(request: SelectionInsightsRequest, current_u
     prompt = f"""
     You are an expert research assistant. Your task is to analyze the provided text and deliver a structured analysis.
 
-    **Instructions:**
-    1.  **Provide a Cohesive Summary:** Synthesize the information from the text into a concise summary.
-    2.  **Extract Key Takeaways:** List the most important points or conclusions.
-    3.  **Formulate Potential Questions:** Based on the text, what are some logical follow-up questions a user might have?
+    *Instructions:*
+    1.  *Provide a Cohesive Summary:* Synthesize the information from the text into a concise summary.
+    2.  *Extract Key Takeaways:* List the most important points or conclusions.
+    3.  *Formulate Potential Questions:* Based on the text, what are some logical follow-up questions a user might have?
 
 
-    **Text for Analysis:**
+    *Text for Analysis:*
     ---
     {request.text}
     ---
