@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getPdfChatStyles } from '../../styles/appStyles';
-import { HistoryIcon } from '../common/Icons';
+import { MenuIcon } from '../common/Icons';
 import apiClient from '../../api/apiClient';
 
 const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId, userToken }) => {
@@ -9,6 +9,7 @@ const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId, us
     const [isLoading, setIsLoading] = useState(true);
     const { currentTheme } = useTheme();
     const styles = getPdfChatStyles(currentTheme);
+    const [isOpen, setIsOpen] = useState(false);
 
     useEffect(() => {
         if (!userToken) return;
@@ -28,11 +29,23 @@ const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId, us
     }, [activeSessionId, userToken]);
 
     return (
-        <div style={styles.historySidebar}>
-            <div style={styles.historyHeader}>
-                <HistoryIcon />
-                <h3 style={styles.historyTitle}>Chat History</h3>
+        <div style={{
+                ...styles.historySidebar,
+                width: isOpen ? "300px" : "30px",
+                transition: "width 0.3s ease"
+            }}>
+            <div style={{ ...styles.historyHeader, paddingBottom: "0.5rem" }}>
+                <span 
+                    style={{ cursor: "pointer", paddingTop: "0.5rem" }}
+                    onClick={() => setIsOpen(prev => !prev)}
+                >
+                    <MenuIcon />
+                </span>
+                {isOpen && <h3 style={styles.historyTitle}>Chat History</h3>}
             </div>
+
+            {isOpen && (
+    <>
             <button onClick={onNewChat} style={styles.newChatButton}>+ New Chat</button>
             <div style={styles.sessionList}>
                 {isLoading ? <p>Loading history...</p> :
@@ -49,6 +62,8 @@ const SessionHistorySidebar = ({ onSelectSession, onNewChat, activeSessionId, us
                     ))
                 }
             </div>
+            </>
+            )}
         </div>
     );
 };
