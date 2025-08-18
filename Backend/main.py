@@ -15,6 +15,10 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTa
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 import logging
+import google.auth
+import google.auth.transport.requests
+from dotenv import load_dotenv
+load_dotenv()
 
 # --- Local Imports ---
 from redis_client import get_redis_client
@@ -88,13 +92,13 @@ app.add_middleware(
 # --- Global Variables & Constants ---
 SUPPORTED_LANGUAGES = { "en": "English", "hi": "Hindi" }
 AZURE_VOICE_MAP = { "en": "en-US-JennyNeural", "hi": "hi-IN-SwaraNeural" }
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # --- App Startup Event ---
 @app.on_event("startup")
 async def startup_event():
     get_redis_client()
-    if not GEMINI_API_KEY:
+    if not GOOGLE_API_KEY:
         print("CRITICAL WARNING: GEMINI_API_KEY environment variable is not set!")
     print("Application startup complete.")
 
@@ -115,33 +119,71 @@ async def get_current_user(authorization: str = Header(...)):
 # ==============================================================================
 # Centralized Gemini API Caller
 # ==============================================================================
-async def call_gemini_api(payload: Dict[str, Any], timeout: float = 120.0) -> Dict[str, Any]:
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="Gemini API key is not configured on the server.")
+logger = logging.getLogger(__name__)
 
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
+# ======================================================================
+# Centralized Gemini API Caller with Dual Auth (API Key or Service Account)
+# ======================================================================
+async def call_gemini_api(payload: dict, timeout: float = 120.0) -> dict:
+    """
+    Calls Gemini API using either:
+    - GOOGLE_API_KEY (local dev), or
+    - GOOGLE_APPLICATION_CREDENTIALS (service account JSON, used in Adobe eval).
+    """
+
+    model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+
+    # Case 1: API key auth (easy for dev)
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if api_key:
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    else:
+        # Case 2: Service account JSON (evaluation mode)
+        creds, _ = google.auth.load_credentials_from_file(
+            os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        auth_req = google.auth.transport.requests.Request()
+        creds.refresh(auth_req)
+        token = creds.token
+
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
     max_retries = 5
     base_wait_time = 1
 
     for attempt in range(max_retries):
         try:
+            headers = {}
+            if api_key:
+                # API key mode → auth in URL
+                headers["Content-Type"] = "application/json"
+            else:
+                # Service account mode → Bearer token
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"
+                }
+
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(api_url, json=payload)
+                response = await client.post(api_url, headers=headers, json=payload)
                 response.raise_for_status()
                 return response.json()
+
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
+            if e.response.status_code in (429, 503):  # rate limit or service unavailable
                 wait_time = (base_wait_time * (2 ** attempt)) + random.uniform(0, 1)
-                logger.warning(f"Rate limit exceeded (429). Retrying in {wait_time:.2f} seconds...")
+                logger.warning(f"Gemini error {e.response.status_code}. Retrying in {wait_time:.2f}s...")
                 await asyncio.sleep(wait_time)
                 continue
-            raise e
+            raise HTTPException(status_code=e.response.status_code, detail=f"Gemini API error: {e}")
         except (httpx.ReadTimeout, httpx.RequestError) as e:
             if attempt < max_retries - 1:
                 await asyncio.sleep(1)
                 continue
-            raise HTTPException(status_code=504, detail=f"AI service request failed: {e}")
-    raise HTTPException(status_code=503, detail="The AI service is unavailable after multiple retries.")
+            raise HTTPException(status_code=504, detail=f"Gemini request failed: {e}")
+
+    raise HTTPException(status_code=503, detail="Gemini API unavailable after retries.")
 
 
 # ==============================================================================
@@ -187,7 +229,10 @@ async def generate_connected_analysis(full_text_context: str, persona: str, job_
 
     1.  **Assess Relevance:** First, review the user's goal: '{job_to_be_done}'. Now, read through all the provided document texts. Decide which documents are relevant to this goal and which are not.
 
-    2.  **Extract Initial Insights:** From the documents you identified as RELEVANT, extract the top 5 most important sections that directly address the user's goal. These will populate the 'top_sections' of the JSON response.
+    2.  **Extract Initial Insights:** From the documents you identified as RELEVANT, extract the top 5 most important sections that directly address the user's goal. These will populate the 'top_sections' of the JSON response.Also , for each section, provide:subsections as it is from the pdf. When you extract a section, also include the page number.
+The page number is indicated in the provided context between markers like:
+--- START OF PAGE 3 in MyDoc.pdf --- ... --- END OF PAGE 3 in MyDoc.pdf ---.
+Always copy this page number into the "page_number" field in the JSON..
 
     3.  **Synthesize Connected Insights:** Now, consider all the RELEVANT documents together. Generate the deeper insights for the 'llm_insights' section.
         - **cross_document_connections**: This is the most critical part. Find connections, patterns, or contradictions between all the relevant materials. Explicitly state which documents you used and which you ignored (and why). For example: "I have ignored Lunch.pdf as it was not relevant to the goal of creating a dinner menu."
@@ -274,9 +319,11 @@ async def analyze_documents(
 
             # Extract text for context
             with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-                text = "".join(page.get_text() for page in doc)
-                context_parts.append(f"--- START OF FULL TEXT for {file.filename} ---\n{text}\n--- END OF FULL TEXT for {file.filename} ---\n")
-                processed_filenames.add(file.filename)
+                for page_num, page in enumerate(doc, start=1):
+                    text = page.get_text()
+                    context_parts.append(
+            f"--- START OF PAGE {page_num} in {file.filename} ---\n{text}\n--- END OF PAGE {page_num} in {file.filename} ---\n"
+                )
 
         except Exception as e:
             logger.error(f"Error reading new file {file.filename}: {e}")
