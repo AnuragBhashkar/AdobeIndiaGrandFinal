@@ -187,7 +187,7 @@ async def generate_connected_analysis(full_text_context: str, persona: str, job_
 
     1.  **Assess Relevance:** First, review the user's goal: '{job_to_be_done}'. Now, read through all the provided document texts. Decide which documents are relevant to this goal and which are not.
 
-    2.  **Extract Initial Insights:** From the documents you identified as RELEVANT, extract the top 3-5 most important sections that directly address the user's goal. These will populate the 'top_sections' of the JSON response.
+    2.  **Extract Initial Insights:** From the documents you identified as RELEVANT, extract the top 5 most important sections that directly address the user's goal. These will populate the 'top_sections' of the JSON response.
 
     3.  **Synthesize Connected Insights:** Now, consider all the RELEVANT documents together. Generate the deeper insights for the 'llm_insights' section.
         - **cross_document_connections**: This is the most critical part. Find connections, patterns, or contradictions between all the relevant materials. Explicitly state which documents you used and which you ignored (and why). For example: "I have ignored Lunch.pdf as it was not relevant to the goal of creating a dinner menu."
