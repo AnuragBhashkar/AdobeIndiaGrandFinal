@@ -183,6 +183,16 @@ const PdfChatPage = ({ userToken }) => {
         }
     };
 
+    const handleRemovePdf = (pdfName) => {
+    setPdfs(prev => prev.filter(p => p.name !== pdfName));
+        // If the removed PDF was selected, reset selection
+        if (selectedPDF?.name === pdfName) {
+            setSelectedPDF(null);
+            setFilePromise(null);
+            setTargetPage(1);
+        }
+    };
+
     return (
         <div style={styles.appContainer}>
             <SessionHistorySidebar
@@ -213,9 +223,41 @@ const PdfChatPage = ({ userToken }) => {
                         <input id="file-upload" type="file" accept="application/pdf" multiple onChange={handleFileChange} style={{ display: 'none' }}/>
                         <div style={styles.pdfList}>
                             {pdfs && pdfs.map((pdf) => (
-                                <button key={pdf.name} onClick={() => handlePDFSelect(pdf)} style={{...styles.pdfListItem, ...(selectedPDF?.name === pdf.name && styles.activePdfListItem)}}>
-                                    {pdf.name}
-                                </button>
+                                <div
+                                    key={pdf.name}
+                                    style={{
+                                        ...styles.pdfListItem,
+                                        ...(selectedPDF?.name === pdf.name && styles.activePdfListItem),
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "space-between",
+                                        padding: "0.4rem 0.6rem",
+                                        marginBottom: "0.5rem",
+                                        cursor: "pointer",
+                                    }}
+                                    onClick={() => handlePDFSelect(pdf)} // whole box is clickable
+                                >
+                                    <span style={{ flex: 1, textAlign: "left" }}>{pdf.name}</span>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation(); // prevent triggering select when removing
+                                            handleRemovePdf(pdf.name);
+                                        }}
+                                        style={{
+                                            marginLeft: "0.5rem",
+                                            color: "white",
+                                            background: "transparent",
+                                            border: "none",
+                                            cursor: "pointer",
+                                            fontWeight: "bold",
+                                            fontSize: "1.2rem",
+                                            lineHeight: "1",
+                                        }}
+                                        title="Remove PDF"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
                             ))}
                         </div>
                         <input type="text" placeholder="Persona (e.g., 'a legal expert')" value={persona} onChange={(e) => setPersona(e.target.value)} style={styles.input}/>
