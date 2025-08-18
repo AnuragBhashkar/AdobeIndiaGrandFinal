@@ -59,7 +59,6 @@ def create_session(analysis_result: Dict[str, Any], user_id: str) -> Optional[st
 
     session_id = str(uuid.uuid4())
     metadata = analysis_result.get("metadata", {})
-    # Ensure user_id from metadata is used, which should be set in main.py
     user_id_from_meta = metadata.get('user_id', user_id)
 
     with redis.pipeline() as pipe:
@@ -77,9 +76,11 @@ def create_session(analysis_result: Dict[str, Any], user_id: str) -> Optional[st
         pipe.set(analysis_key, json.dumps(analysis_result))
 
         files_key = f"{SESSION_FILES_PREFIX}{session_id}"
-        file_paths = metadata.get("file_paths", [])
-        if file_paths:
-            pipe.rpush(files_key, *file_paths)
+        
+        # FIX IS HERE: Use the correct key "file_path_map" and get its values
+        file_path_map = metadata.get("file_path_map", {})
+        if file_path_map:
+            pipe.rpush(files_key, *file_path_map.values())
 
         user_sessions_key = f"user:{user_id_from_meta}:sessions"
         pipe.sadd(user_sessions_key, session_id)
