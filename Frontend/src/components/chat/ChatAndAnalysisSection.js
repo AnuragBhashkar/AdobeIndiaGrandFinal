@@ -3,7 +3,6 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { getPdfChatStyles } from '../../styles/appStyles';
 import AnimatedBotMessage from './AnimatedBotMessage';
 import apiClient from '../../api/apiClient';
-import { BsLightbulb } from "react-icons/bs";
 
 const ChatAndAnalysisSection = ({
     messages, onSendMessage, loading, analysisResult, onInsightClick,
