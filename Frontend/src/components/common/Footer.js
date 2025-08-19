@@ -2,6 +2,11 @@ import React from 'react';
 import { GithubIcon, LinkedinIcon, TwitterIcon } from './Icons';
 
 const Footer = ({ onNavigate }) => {
+    const handleNavClick = (page) => {
+        onNavigate(page);
+        window.scrollTo(0, 0); // This line scrolls the window to the top
+    };
+
     return (
         <footer className="footer-enhanced">
             <div className="footer-content">
@@ -12,9 +17,9 @@ const Footer = ({ onNavigate }) => {
                 <div className="footer-section footer-links">
                     <h3 className="footer-title">Quick Links</h3>
                     <ul>
-                        <li><button onClick={() => onNavigate("home")} className="footer-link">Home</button></li>
-                        <li><button onClick={() => onNavigate("about")} className="footer-link">About Us</button></li>
-                        <li><button onClick={() => onNavigate("contact")} className="footer-link">Contact Us</button></li>
+                        <li><a href="#home" onClick={() => handleNavClick("home")} className="footer-link">Home</a></li>
+                        <li><a href="#about" onClick={() => handleNavClick("about")} className="footer-link">About Us</a></li>
+                        <li><a href="#contact" onClick={() => handleNavClick("contact")} className="footer-link">Contact Us</a></li>
                     </ul>
                 </div>
                 <div className="footer-section footer-social">
