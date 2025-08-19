@@ -6,32 +6,26 @@ import ChatAndAnalysisSection from "../components/chat/ChatAndAnalysisSection";
 import PdfViewer from "../PdfViewer";
 import apiClient from "../api/apiClient";
 
-// New state for minimizing Persona & Job panel
-
 const PdfChatPage = ({ userToken }) => {
   const [isPersonaMinimized, setIsPersonaMinimized] = useState(false);
   const { currentTheme } = useTheme();
   const styles = getPdfChatStyles(currentTheme);
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [sessionId, setSessionId] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
-  const [messages, setMessages] = useState([]);
-
   const [pdfs, setPdfs] = useState([]);
   const [selectedPDF, setSelectedPDF] = useState(null);
   const [persona, setPersona] = useState("");
   const [job, setJob] = useState("");
   const [filePromise, setFilePromise] = useState(null);
   const [targetPage, setTargetPage] = useState(1);
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [translatedInsights, setTranslatedInsights] = useState(null);
-
   const [selectionInsights, setSelectionInsights] = useState(null);
   const [isSelectionLoading, setIsSelectionLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("analysis");
-
 
   const handlePDFSelect = (pdf) => {
     if (selectedPDF?.name !== pdf.name) {
@@ -80,12 +74,6 @@ const PdfChatPage = ({ userToken }) => {
 
       setSessionId(response.data.sessionId);
       setAnalysisResult(response.data.analysis);
-      setMessages([
-        {
-          role: "bot",
-          content: "Analysis complete! Here are the key insights.",
-        },
-      ]);
     } catch (err) {
       const errorMessage =
         err.response?.data?.detail ||
@@ -96,39 +84,16 @@ const PdfChatPage = ({ userToken }) => {
     }
   };
 
-  const handleSendQuery = async (msg) => {
-    if (!sessionId) return;
-    const userMsg = { role: "user", content: msg };
-    setMessages((prev) => [...prev, userMsg]);
-    setLoading(true);
-    try {
-      const response = await apiClient.post("/chat/", {
-        sessionId: sessionId,
-        query: msg,
-      });
-      setMessages((prev) => [...prev, response.data]);
-    } catch (err) {
-      const errorMessage =
-        err.response?.data?.detail || "Failed to get a response.";
-      setMessages((prev) => [
-        ...prev,
-        { role: "bot", content: `Error: ${errorMessage}` },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSelectSession = async (selectedSessionId) => {
     setLoading(true);
     setError("");
     setTranslatedInsights(null);
+    setIsSidebarOpen(false); // This is the new line that closes the sidebar
     try {
       const response = await apiClient.get(`/sessions/${selectedSessionId}`);
       const sessionData = response.data;
       setSessionId(selectedSessionId);
       setAnalysisResult(sessionData.analysis);
-      setMessages(sessionData.chat_history);
       setPdfs([]);
       setSelectedPDF(null);
       setFilePromise(null);
@@ -163,7 +128,6 @@ const PdfChatPage = ({ userToken }) => {
   const handleNewChat = () => {
     setSessionId(null);
     setAnalysisResult(null);
-    setMessages([]);
     setPdfs([]);
     setSelectedPDF(null);
     setPersona("");
@@ -172,6 +136,7 @@ const PdfChatPage = ({ userToken }) => {
     setTranslatedInsights(null);
     setSelectionInsights(null);
     setActiveTab("analysis");
+    setIsSidebarOpen(false);
   };
 
   const handleInsightClick = (insight) => {
@@ -205,7 +170,6 @@ const PdfChatPage = ({ userToken }) => {
 
   const handleRemovePdf = (pdfName) => {
     setPdfs((prev) => prev.filter((p) => p.name !== pdfName));
-    // If the removed PDF was selected, reset selection
     if (selectedPDF?.name === pdfName) {
       setSelectedPDF(null);
       setFilePromise(null);
@@ -214,12 +178,14 @@ const PdfChatPage = ({ userToken }) => {
   };
 
   return (
-    <div className="app-container" style={styles.appContainer}>
+    <div className={`app-container ${isSidebarOpen ? 'sidebar-open' : ''}`} style={styles.appContainer}>
       <SessionHistorySidebar
         onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
         activeSessionId={sessionId}
         userToken={userToken}
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
       />
       <div className="main-content" style={styles.mainContent}>
         <div className="viewer-panel" style={styles.viewerPanel}>
@@ -242,10 +208,9 @@ const PdfChatPage = ({ userToken }) => {
         </div>
 
         <div className="chat-panel" style={styles.chatPanel}>
-          <div className="chat-controls" style={styles.chatControls}>
+           <div className="chat-controls" style={styles.chatControls}>
             <div className="pdf-list" style={styles.pdfList}>
               {pdfs.length === 0 ? (
-                // Show upload button initially
                 <>
                   <label
                     htmlFor="file-upload"
@@ -271,14 +236,13 @@ const PdfChatPage = ({ userToken }) => {
                 </>
               ) : (
                 <>
-                  {/* Small + button at the TOP */}
                   <label
                     htmlFor="file-upload"
                     style={{
                       cursor: "pointer",
                       display: "inline-block",
-                      padding: "0.2rem 0.5rem", // tighter spacing
-                      fontSize: "0.8rem", // smaller size
+                      padding: "0.2rem 0.5rem",
+                      fontSize: "0.8rem",
                       lineHeight: "1rem",
                       borderRadius: "50%",
                       background: "#e50914",
@@ -300,7 +264,6 @@ const PdfChatPage = ({ userToken }) => {
                     style={{ display: "none" }}
                   />
 
-                  {/* Render the PDF list */}
                   {pdfs.map((pdf) => (
                     <div
                       key={pdf.name}
@@ -354,7 +317,6 @@ const PdfChatPage = ({ userToken }) => {
               )}
             </div>
 
-            {/* Persona & Job Panel */}
             {!isPersonaMinimized && (
               <>
                 <input
@@ -414,15 +376,11 @@ const PdfChatPage = ({ userToken }) => {
           </div>
 
           {!analysisResult ? (
-            <div className="chat-box" style={styles.chatBox}>
-              <div className="placeholder-text" style={styles.placeholderText}>
-                Upload documents and define your analysis goals to begin.
-              </div>
+            <div className="placeholder-text" style={{...styles.placeholderText, flex: 1, display: 'flex', alignItems: 'center'}}>
+              Upload documents and define your analysis goals to begin.
             </div>
           ) : (
             <ChatAndAnalysisSection
-              messages={messages}
-              onSendMessage={handleSendQuery}
               loading={loading}
               analysisResult={analysisResult}
               onInsightClick={handleInsightClick}
@@ -443,4 +401,3 @@ const PdfChatPage = ({ userToken }) => {
 };
 
 export default PdfChatPage;
-

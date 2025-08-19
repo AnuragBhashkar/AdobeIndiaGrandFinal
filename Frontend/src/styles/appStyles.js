@@ -61,13 +61,9 @@ export const getPdfChatStyles = (theme) => ({
     pdfList: { display: 'flex', gap: '0.5rem', overflowX: 'auto', padding: '0.5rem 0' },
     pdfListItem: { padding: '0.4rem 0.8rem', borderRadius: '5px', cursor: 'pointer', whiteSpace: 'nowrap', border: `1px solid ${theme.border}`, backgroundColor: 'transparent', color: theme.text },
     activePdfListItem: { backgroundColor: theme.activeItem, color: theme.activeItemText, fontWeight: 'bold', borderColor: theme.primary },
-    chatInputContainer: { display: 'flex', gap: '0.5rem', marginTop: 'auto', flexShrink: 0 },
     input: { flex: 1, padding: '0.3rem 0.6rem', fontSize: '0.9rem', borderRadius: '5px', border: `1px solid ${theme.border}`, backgroundColor: theme.inputBg, color: theme.text, width: 'calc(100% - 1.5rem)' },
     textarea: { minHeight: '60px', resize: 'vertical', fontFamily: "'Segoe UI', Roboto, sans-serif" , padding: '0.3rem 0.6rem', fontSize: "0.9rem"},
     button: { padding: '0.4rem 0.9rem', backgroundColor: theme.primary, color: theme.buttonText, border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
-    chatMessage: { padding: '0.75rem 1rem', borderRadius: '12px', maxWidth: '85%', lineHeight: '1.4'},
-    userMessage: { backgroundColor: theme.messageBgUser, color: theme.messageTextUser, alignSelf: 'flex-end', borderBottomRightRadius: '2px' },
-    botMessage: { backgroundColor: theme.messageBgBot, color: theme.messageTextBot, alignSelf: 'flex-start', borderBottomLeftRadius: '2px' },
     loadingIndicator: { alignSelf: 'center', color: theme.text, opacity: 0.8, fontStyle: 'italic', padding: '1rem' },
     placeholderText: { textAlign: 'center', opacity: 0.7, margin: 'auto' },
     analysisResult: { padding: '0.5rem', backgroundColor: theme.background, borderRadius: '8px', marginBottom: '1rem' , fontSize: '1.1rem'},
@@ -101,11 +97,9 @@ export const getPdfChatStyles = (theme) => ({
         fontWeight: 'bold'
     },
     insightsPanel: {
+        flex: 1,
         overflowY: 'auto',
-        maxHeight: '45%',
         padding: '0.5rem',
-        borderBottom: `1px solid ${theme.border}`,
-        flexShrink: 0
     },
     selectionInsightsContainer: {
         padding: '0.5rem',
@@ -113,5 +107,4 @@ export const getPdfChatStyles = (theme) => ({
         borderRadius: '8px',
         animation: 'fadeIn 0.5s forwards'
     },
-    chatBox: { flexGrow: 1, overflowY: 'auto', padding: '0.5rem', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', border: `1px solid ${theme.border}`, borderRadius: '8px', backgroundColor: theme.background },
 });

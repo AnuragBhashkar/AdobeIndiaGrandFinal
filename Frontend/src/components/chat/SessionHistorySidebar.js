@@ -9,12 +9,13 @@ const SessionHistorySidebar = ({
   onNewChat,
   activeSessionId,
   userToken,
+  isOpen,
+  setIsOpen,
 }) => {
   const [sessions, setSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const { currentTheme } = useTheme();
   const styles = getPdfChatStyles(currentTheme);
-  const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
     if (!userToken) return;
@@ -26,7 +27,8 @@ const SessionHistorySidebar = ({
           (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
         );
         setSessions(sortedSessions);
-      } catch (error) {
+      } catch (error)
+      {
         console.error("Failed to fetch sessions:", error);
       } finally {
         setIsLoading(false);
