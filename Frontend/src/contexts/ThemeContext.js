@@ -9,8 +9,9 @@ export const ThemeContextProvider = ({ children }) => {
   const currentTheme = themes[theme];
 
   useEffect(() => {
-    document.body.style.backgroundColor = currentTheme.background;
-  }, [currentTheme]);
+    // Set the data-theme attribute on the body to enable CSS variable theming
+    document.body.setAttribute('data-theme', theme);
+  }, [theme]);
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme, currentTheme }}>
