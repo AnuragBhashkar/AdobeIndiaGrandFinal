@@ -3,6 +3,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { getPdfChatStyles } from '../../styles/appStyles';
 import AnimatedBotMessage from './AnimatedBotMessage';
 import apiClient from '../../api/apiClient';
+import { BsLightbulb } from "react-icons/bs";
 
 const ChatAndAnalysisSection = ({
     messages, onSendMessage, loading, analysisResult, onInsightClick,
@@ -88,7 +89,7 @@ const ChatAndAnalysisSection = ({
             {activeTab === 'analysis' && analysisResult && (
                 <div style={styles.analysisResult}>
                     <h4>Initial Insights:</h4>
-                      {analysisResult.top_sections?.slice(0, 3).map((section, idx) => (
+                      {analysisResult.top_sections?.slice(0, 5).map((section, idx) => (
                           <div key={idx} style={styles.analysisSnippet} onClick={() => onInsightClick(section)}>
                               <p style={styles.analysisReason}><strong>From {section.document}:</strong> {section.reasoning}</p>
                               <p style={styles.sectionTitleText}>Section: "{section.section_title}"</p>
@@ -102,7 +103,9 @@ const ChatAndAnalysisSection = ({
                     {analysisResult.llm_insights && (
                         <div style={styles.llmInsightsContainer}>
                             <div style={styles.insightsHeader}>
-                                <h4>Enhanced Insights from Gemini</h4>
+                                <h4 style={{ display: "flex", alignItems: "center", gap: "0.4rem", margin: "0rem", fontSize: "1.1rem", fontWeight: "600" }}>
+                                Insights Bulb 💡
+                                </h4>
                                 <div style={styles.translateAllContainer}>
                                     {isTranslatingAll && <span style={{fontSize: '0.9rem', marginRight: '8px'}}>Translating...</span>}
                                     {translatedInsights ? (

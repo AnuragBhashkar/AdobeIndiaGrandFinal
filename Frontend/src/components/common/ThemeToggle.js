@@ -6,8 +6,8 @@ const ThemeToggle = ({ toggleTheme, isDark }) => {
     <button
       onClick={toggleTheme}
       style={{
-        width: "48px",
-        height: "48px",
+        width: "30px",
+        height: "30px",
         borderRadius: "50%",
         border: "none",
         cursor: "pointer",
