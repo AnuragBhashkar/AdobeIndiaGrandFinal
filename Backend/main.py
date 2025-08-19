@@ -72,18 +72,35 @@ class UserLogin(BaseModel):
 # --- Initialize FastAPI App ---
 app = FastAPI(
     title="PDF Intelligence API",
-    description="API for persona-driven PDF analysis, chat, and multi-language audio summaries, powered by Gemini 1.5 Flash.",
+    description="API for persona-driven PDF analysis, chat, and multi-language audio summaries, powered by Gemini 2.5 Flash.",
     version="3.3.0" # Robust file-to-path mapping
 )
 SESSION_FILES_DIR = "session_files"
 os.makedirs(SESSION_FILES_DIR, exist_ok=True)
 
-app.mount("/session_files", StaticFiles(directory=SESSION_FILES_DIR), name="session_files")
+# Mount the React build folder (JS/CSS/images, etc.)
+app.mount("/static", StaticFiles(directory="static/static"), name="static")
+
+# Serve index.html for the root path
+@app.get("/{full_path:path}")
+async def serve_react_app(full_path: str):
+    """
+    Catch-all route:
+    - If the requested file exists in /static, serve it directly
+    - Otherwise, serve index.html (for React Router)
+    """
+    file_path = os.path.join("static", full_path)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(file_path)
+
+    # fallback to React index.html
+    index_path = os.path.join("static", "index.html")
+    return FileResponse(index_path)
 
 # --- Add CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:8080"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
