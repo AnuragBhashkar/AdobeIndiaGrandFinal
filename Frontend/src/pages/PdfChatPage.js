@@ -219,7 +219,17 @@ const PdfChatPage = ({ userToken }) => {
 
                 <div style={styles.chatPanel}>
                     <div style={styles.chatControls}>
-                        <label htmlFor="file-upload" style={styles.uploadButton}>Upload PDFs</label>
+                        <label htmlFor="file-upload" 
+                        style={{ 
+                            ...styles.uploadButton, 
+                            padding: "0.3rem 0.8rem", 
+                            fontSize: "0.85rem", 
+                            width: "120px",
+                            textAlign: "center"
+                        }}
+                        >
+                        Upload PDFs
+                        </label>
                         <input id="file-upload" type="file" accept="application/pdf" multiple onChange={handleFileChange} style={{ display: 'none' }}/>
                         <div style={styles.pdfList}>
                             {pdfs && pdfs.map((pdf) => (
