@@ -92,7 +92,7 @@ app.add_middleware(
 # --- Global Variables & Constants ---
 SUPPORTED_LANGUAGES = { "en": "English", "hi": "Hindi" }
 AZURE_VOICE_MAP = { "en": "en-US-JennyNeural", "hi": "hi-IN-SwaraNeural" }
-GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 # --- App Startup Event ---
 @app.on_event("startup")
