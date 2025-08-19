@@ -1,12 +1,8 @@
 import React, { useState } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
-import { getModalStyles } from '../../styles/appStyles';
 import { CloseIcon } from '../common/Icons';
 import apiClient from '../../api/apiClient';
 
 const LoginModal = ({ isOpen, onClose, onLogin }) => {
-    const { currentTheme } = useTheme();
-    const styles = getModalStyles(currentTheme);
     const [isSignup, setIsSignup] = useState(false);
     const [error, setError] = useState('');
 
@@ -35,24 +31,24 @@ const LoginModal = ({ isOpen, onClose, onLogin }) => {
     };
 
     return (
-        <div style={styles.overlay} onClick={onClose}>
-            <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-                <button style={styles.closeButton} onClick={onClose}>
-                    <CloseIcon color={currentTheme.text} />
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <button className="modal-close-button" onClick={onClose}>
+                    <CloseIcon color="var(--text)" />
                 </button>
-                <h2 style={styles.title}>{isSignup ? 'Create Account' : 'Welcome Back'}</h2>
-                <form onSubmit={handleSubmit} style={styles.form}>
-                    {isSignup && <input name="name" type="text" placeholder="Your Name" style={styles.input} required />}
-                    <input name="email" type="email" placeholder="Email Address" style={styles.input} required />
-                    <input name="password" type="password" placeholder="Password" style={styles.input} required />
-                    {error && <p style={{ color: 'red', textAlign: 'center' }}>{error}</p>}
-                    <button type="submit" style={styles.submitButton}>
+                <h2 className="modal-title">{isSignup ? 'Create Account' : 'Welcome Back'}</h2>
+                <form onSubmit={handleSubmit} className="modal-form">
+                    {isSignup && <input name="name" type="text" placeholder="Your Name" className="modal-input" required />}
+                    <input name="email" type="email" placeholder="Email Address" className="modal-input" required />
+                    <input name="password" type="password" placeholder="Password" className="modal-input" required />
+                    {error && <p className="error-message">{error}</p>}
+                    <button type="submit" className="modal-submit-button">
                         {isSignup ? 'Sign Up' : 'Login'}
                     </button>
                 </form>
-                <p style={styles.toggleText}>
+                <p className="modal-toggle-text">
                     {isSignup ? 'Already have an account?' : "Don't have an account?"}
-                    <span onClick={() => setIsSignup(!isSignup)} style={styles.toggleLink}>
+                    <span onClick={() => setIsSignup(!isSignup)} className="modal-toggle-link">
                         {isSignup ? ' Login' : ' Sign Up'}
                     </span>
                 </p>
