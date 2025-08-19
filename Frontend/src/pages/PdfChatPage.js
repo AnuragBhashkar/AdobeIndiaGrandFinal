@@ -214,15 +214,15 @@ const PdfChatPage = ({ userToken }) => {
   };
 
   return (
-    <div style={styles.appContainer}>
+    <div className="app-container" style={styles.appContainer}>
       <SessionHistorySidebar
         onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
         activeSessionId={sessionId}
         userToken={userToken}
       />
-      <div style={styles.mainContent}>
-        <div style={styles.viewerPanel}>
+      <div className="main-content" style={styles.mainContent}>
+        <div className="viewer-panel" style={styles.viewerPanel}>
           {filePromise && selectedPDF ? (
             <PdfViewer
               filePromise={filePromise}
@@ -231,7 +231,7 @@ const PdfChatPage = ({ userToken }) => {
               onTextSelect={handleTextSelect}
             />
           ) : (
-            <div style={styles.viewerPlaceholder}>
+            <div className="viewer-placeholder" style={styles.viewerPlaceholder}>
               <p>
                 {sessionId
                   ? "Select a PDF from the analysis to view it."
@@ -241,60 +241,9 @@ const PdfChatPage = ({ userToken }) => {
           )}
         </div>
 
-        <div style={styles.chatPanel}>
-          <div style={styles.chatControls}>
-            {/* <label htmlFor="file-upload" 
-                        style={{ 
-                            ...styles.uploadButton, 
-                            padding: "0.3rem 0.8rem", 
-                            fontSize: "0.85rem", 
-                            width: "120px",
-                            textAlign: "center"
-                        }}
-                        >
-                        Upload PDFs
-                        </label>
-                        <input id="file-upload" type="file" accept="application/pdf" multiple onChange={handleFileChange} style={{ display: 'none' }}/>
-                        <div style={styles.pdfList}>
-                            {pdfs && pdfs.map((pdf) => (
-                                <div
-                                    key={pdf.name}
-                                    style={{
-                                        ...styles.pdfListItem,
-                                        ...(selectedPDF?.name === pdf.name && styles.activePdfListItem),
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
-                                        padding: "0.4rem 0.6rem",
-                                        marginBottom: "0.5rem",
-                                        cursor: "pointer",
-                                    }}
-                                    onClick={() => handlePDFSelect(pdf)} // whole box is clickable
-                                >
-                                    <span style={{ flex: 1, textAlign: "left" }}>{pdf.name}</span>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation(); // prevent triggering select when removing
-                                            handleRemovePdf(pdf.name);
-                                        }}
-                                        style={{
-                                            marginLeft: "0.5rem",
-                                            color: "white",
-                                            background: "transparent",
-                                            border: "none",
-                                            cursor: "pointer",
-                                            fontWeight: "bold",
-                                            fontSize: "1.2rem",
-                                            lineHeight: "1",
-                                        }}
-                                        title="Remove PDF"
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            ))}
-                        </div> */}
-            <div style={styles.pdfList}>
+        <div className="chat-panel" style={styles.chatPanel}>
+          <div className="chat-controls" style={styles.chatControls}>
+            <div className="pdf-list" style={styles.pdfList}>
               {pdfs.length === 0 ? (
                 // Show upload button initially
                 <>
@@ -355,6 +304,7 @@ const PdfChatPage = ({ userToken }) => {
                   {pdfs.map((pdf) => (
                     <div
                       key={pdf.name}
+                      className="pdf-list-item"
                       style={{
                         ...styles.pdfListItem,
                         ...(selectedPDF?.name === pdf.name && {
@@ -408,6 +358,7 @@ const PdfChatPage = ({ userToken }) => {
             {!isPersonaMinimized && (
               <>
                 <input
+                  className="persona-input"
                   type="text"
                   placeholder="Persona (e.g., 'a legal expert')"
                   value={persona}
@@ -415,6 +366,7 @@ const PdfChatPage = ({ userToken }) => {
                   style={styles.input}
                 />
                 <textarea
+                  className="job-textarea"
                   placeholder="Job to be done (e.g., 'summarize key risks')"
                   value={job}
                   onChange={(e) => setJob(e.target.value)}
@@ -462,8 +414,8 @@ const PdfChatPage = ({ userToken }) => {
           </div>
 
           {!analysisResult ? (
-            <div style={styles.chatBox}>
-              <div style={styles.placeholderText}>
+            <div className="chat-box" style={styles.chatBox}>
+              <div className="placeholder-text" style={styles.placeholderText}>
                 Upload documents and define your analysis goals to begin.
               </div>
             </div>

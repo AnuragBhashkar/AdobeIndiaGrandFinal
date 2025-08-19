@@ -36,13 +36,7 @@ const SessionHistorySidebar = ({
   }, [activeSessionId, userToken]);
 
   return (
-    <div
-      style={{
-        ...styles.historySidebar,
-        width: isOpen ? "300px" : "30px",
-        transition: "width 0.3s ease",
-      }}
-    >
+    <div className={`history-sidebar ${isOpen ? 'open' : 'collapsed'}`}>
       <div style={{ ...styles.historyHeader, paddingBottom: "0.5rem" }}>
         <span
           style={{ cursor: "pointer", paddingTop: "0.5rem" }}

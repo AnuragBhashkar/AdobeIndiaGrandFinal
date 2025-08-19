@@ -29,7 +29,15 @@ const PdfViewer = ({ filePromise, fileName, pageNumber, onTextSelect }) => {
           content: { promise: filePromise },
           metaData: { fileName: fileName },
         },
-        { embedMode: 'SIZED_CONTAINER' }
+        {
+          embedMode: 'SIZED_CONTAINER',
+          showFullScreen: false,
+          showDownloadPDF: false,
+          showPrintPDF: false,
+          showLeftHandPanel: false,
+          defaultViewMode: 'FIT_PAGE',
+          dockPageControls: true
+        }
       );
 
       previewFilePromise.then(adobeViewer => {
