@@ -76,20 +76,7 @@ const PdfViewer = ({ filePromise, fileName, pageNumber, onTextSelect }) => {
       <div id="adobe-dc-view" ref={viewerRef} style={{ height: '100%' }} />
       <button
         onClick={handleGetSelectedText}
-        style={{
-            position: 'absolute',
-            bottom: '20px',
-            right: '20px',
-            zIndex: 10,
-            padding: '10px 15px',
-            backgroundColor: '#e50914',
-            color: 'white',
-            border: 'none',
-            borderRadius: '5px',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-        }}
+        className="insights-button" // Use a class instead of inline styles
       >
         Get Insights on Selection
       </button>
