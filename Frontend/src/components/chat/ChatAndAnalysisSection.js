@@ -3,7 +3,6 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { getPdfChatStyles } from '../../styles/appStyles';
 import AnimatedBotMessage from './AnimatedBotMessage';
 import apiClient from '../../api/apiClient';
-import { BsLightbulb } from "react-icons/bs";
 
 const ChatAndAnalysisSection = ({
     messages, onSendMessage, loading, analysisResult, onInsightClick,
@@ -85,7 +84,7 @@ const ChatAndAnalysisSection = ({
             </button>
         </div>
 
-        <div style={styles.insightsPanel}>
+        <div className="insights-panel" style={styles.insightsPanel}>
             {activeTab === 'analysis' && analysisResult && (
                 <div style={styles.analysisResult}>
                     <h4 style={{marginBottom: "0rem", marginTop: "0.2rem"}}>Initial Insights:</h4>

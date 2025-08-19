@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Footer from '../components/common/Footer';
+import emailjs from '@emailjs/browser'; // Import EmailJS
 
 const ContactUsPage = ({ onNavigate }) => {
     const [formData, setFormData] = useState({
@@ -39,19 +40,35 @@ const ContactUsPage = ({ onNavigate }) => {
         }
         
         setIsSubmitting(true);
-        console.log('Form Submitted:', formData);
 
-        setTimeout(() => {
-            alert('Thank you for your feedback! We will get back to you soon.');
-            setFormData({
-                name: '',
-                email: '',
-                phone: '',
-                feedback: '',
-                callback: false,
+        const serviceId = process.env.REACT_APP_EMAILJS_SERVICE_ID;
+        const templateId = process.env.REACT_APP_EMAILJS_TEMPLATE_ID;
+        const publicKey = process.env.REACT_APP_EMAILJS_PUBLIC_KEY;
+
+        const templateParams = {
+            ...formData,
+            callback: formData.callback ? 'Yes' : 'No',
+        };
+
+        emailjs.send(serviceId, templateId, templateParams, publicKey)
+            .then((response) => {
+               console.log('SUCCESS!', response.status, response.text);
+               alert('Thank you for your feedback! We will get back to you soon.');
+               setFormData({
+                   name: '',
+                   email: '',
+                   phone: '',
+                   feedback: '',
+                   callback: false,
+               });
+            })
+            .catch((err) => {
+               console.error('FAILED...', err);
+               alert('Sorry, something went wrong. Please try again later.');
+            })
+            .finally(() => {
+                setIsSubmitting(false);
             });
-            setIsSubmitting(false);
-        }, 1000);
     };
 
     return (
@@ -86,7 +103,7 @@ const ContactUsPage = ({ onNavigate }) => {
                             <label htmlFor="callback">Please call me back</label>
                         </div>
                         <button type="submit" className="action-button form-submit-button" disabled={isSubmitting}>
-                            {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
+                            {isSubmitting ? 'Sending...' : 'Submit Feedback'}
                         </button>
                     </form>
                 </div>
@@ -95,16 +112,16 @@ const ContactUsPage = ({ onNavigate }) => {
             <div className="location-container">
                 <div className="address-details">
                     <h3>Our Office</h3>
-                    <p><strong>PaperTrail</strong></p>
-                    <p>Chitkara University</p>
-                    <p>Rajpura, Punjab, 140401</p>
+                    <p><strong>PaperTrail Headquarters</strong></p>
+                    <p>123 Innovation Drive, Tech Park</p>
+                    <p>Jaipur, Rajasthan, 302012</p>
                     <p>India</p>
                     <p><strong>Email:</strong> support@papertrail.com</p>
                     <p><strong>Phone:</strong> +91 (141) 555-0123</p>
                 </div>
                 <div className="map-iframe">
                     <iframe
-                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3437.1751352098304!2d76.65720287536413!3d30.51608647468947!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390fc32344a6e2d7%3A0x81b346dee91799ca!2sChitkara%20University!5e0!3m2!1sen!2sin!4v1755573249677!5m2!1sen!2sin"
+                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d227748.38256244714!2d75.6504722204738!3d26.88544791928236!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x396c4adf4c57e281%3A0xce1c63a0cf22e09!2sJaipur%2C%20Rajasthan!5e0!3m2!1sen!2sin!4v1692882594458!5m2!1sen!2sin"
                         width="100%"
                         height="100%"
                         style={{ border: 0, borderRadius: '12px' }}
