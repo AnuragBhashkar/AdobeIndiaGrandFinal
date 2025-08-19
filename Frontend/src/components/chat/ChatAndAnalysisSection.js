@@ -88,7 +88,7 @@ const ChatAndAnalysisSection = ({
         <div style={styles.insightsPanel}>
             {activeTab === 'analysis' && analysisResult && (
                 <div style={styles.analysisResult}>
-                    <h4>Initial Insights:</h4>
+                    <h4 style={{marginBottom: "0rem", marginTop: "0.2rem"}}>Initial Insights:</h4>
                       {analysisResult.top_sections?.slice(0, 5).map((section, idx) => (
                           <div key={idx} style={styles.analysisSnippet} onClick={() => onInsightClick(section)}>
                               <p style={styles.analysisReason}><strong>From {section.document}:</strong> {section.reasoning}</p>
@@ -186,20 +186,26 @@ const ChatAndAnalysisSection = ({
             )}
         </div>
 
-        <div ref={chatBoxRef} style={styles.chatBox}>
-            {messages.map((msg, idx) => (
-                msg.role === 'user' ? (
-                    <div key={idx} style={{...styles.chatMessage, ...styles.userMessage}}>{msg.content}</div>
-                ) : (
-                    <AnimatedBotMessage key={idx} message={msg} />
-                )
-            ))}
-            {loading && <div style={styles.loadingIndicator}>Thinking...</div>}
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div ref={chatBoxRef} style={{ ...styles.chatBox, flex: 1, overflowY: "auto" }}>
+            {/* chat messages here */}
         </div>
-        <div style={styles.chatInputContainer}>
-            <input type="text" placeholder="Ask a follow-up..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} style={styles.input} disabled={!analysisResult || loading}/>
-            <button onClick={handleSend} style={styles.button} disabled={!analysisResult || loading}>Send</button>
+        <div style={{ ...styles.chatInputContainer, flexShrink: 0 }}>
+            <input
+            type="text"
+            placeholder="Ask a follow-up..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            style={styles.input}
+            disabled={!analysisResult || loading}
+            />
+            <button onClick={handleSend} style={styles.button} disabled={!analysisResult || loading}>
+            Send
+            </button>
         </div>
+        </div>
+
     </>
   );
 };
