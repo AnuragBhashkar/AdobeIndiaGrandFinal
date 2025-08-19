@@ -1,10 +1,11 @@
 import React from "react";
-import { Moon, Sun, Star } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 
 const ThemeToggle = ({ toggleTheme, isDark }) => {
   return (
     <button
       onClick={toggleTheme}
+
       style={{
         width: "30px",
         height: "30px",
@@ -21,18 +22,15 @@ const ThemeToggle = ({ toggleTheme, isDark }) => {
           : "0 0 12px rgba(255,255,255,0.4)",
         transition: "all 0.3s ease-in-out",
       }}
+
     >
       {isDark ? (
-        <>
-          {/* 🌙 Moon */}
-          <Moon size={24} color="white" />
-        </>
+        <Moon size={20} color="white" />
       ) : (
-        <Sun size={24} color="grey" />
+        <Sun size={20} color="grey" />
       )}
     </button>
   );
 };
 
 export default ThemeToggle;
-
