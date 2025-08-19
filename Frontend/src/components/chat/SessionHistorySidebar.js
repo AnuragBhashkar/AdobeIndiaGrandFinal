@@ -36,13 +36,7 @@ const SessionHistorySidebar = ({
   }, [activeSessionId, userToken]);
 
   return (
-    <div
-      style={{
-        ...styles.historySidebar,
-        width: isOpen ? "300px" : "30px",
-        transition: "width 0.3s ease",
-      }}
-    >
+    <div className={`history-sidebar ${isOpen ? 'open' : 'collapsed'}`}>
       <div style={{ ...styles.historyHeader, paddingBottom: "0.5rem" }}>
         <span
           style={{ cursor: "pointer", paddingTop: "0.5rem" }}
@@ -54,43 +48,39 @@ const SessionHistorySidebar = ({
       </div>
 
       {isOpen && (
-        <>
-          <button onClick={onNewChat} style={styles.newChatButton}>
+        <div
+          className="session-list"
+          style={{
+            ...styles.sessionList,
+          }}
+        >
+          <button onClick={onNewChat} className="new-chat-inline">
             + New Chat
           </button>
-          <div
-            style={{
-              ...styles.sessionList,
-              overflowY: "auto",
-              scrollbarWidth: "none",
-              msOverflowStyle: "none",
-            }}
-          >
-            {isLoading ? (
-              <p>Loading history...</p>
-            ) : (
-              sessions.map((session) => (
-                <div
-                  key={session.id}
-                  onClick={() => onSelectSession(session.id)}
-                  style={{
-                    ...styles.sessionItem,
-                    ...(session.id === activeSessionId &&
-                      styles.activeSessionItem),
-                  }}
-                >
-                  <p style={styles.sessionPersona}>
-                    {session.persona || "Untitled Chat"}
-                  </p>
-                  <p style={styles.sessionJob}>{session.job}</p>
-                  <p style={styles.sessionTimestamp}>
-                    {new Date(session.timestamp).toLocaleString()}
-                  </p>
-                </div>
-              ))
-            )}
-          </div>
-        </>
+          {isLoading ? (
+            <p>Loading history...</p>
+          ) : (
+            sessions.map((session) => (
+              <div
+                key={session.id}
+                onClick={() => onSelectSession(session.id)}
+                style={{
+                  ...styles.sessionItem,
+                  ...(session.id === activeSessionId &&
+                    styles.activeSessionItem),
+                }}
+              >
+                <p style={styles.sessionPersona}>
+                  {session.persona || "Untitled Chat"}
+                </p>
+                <p style={styles.sessionJob}>{session.job}</p>
+                <p style={styles.sessionTimestamp}>
+                  {new Date(session.timestamp).toLocaleString()}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
       )}
     </div>
   );

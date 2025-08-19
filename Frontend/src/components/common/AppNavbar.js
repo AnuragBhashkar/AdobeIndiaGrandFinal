@@ -26,7 +26,7 @@ const AppNavbar = ({ onNavigate, isLoggedIn, onLogout, onLoginClick }) => {
       </div>
 
       <div className="nav-right">
-        <ThemeToggle toggleTheme={toggleTheme} isDark={theme === "dark"} />
+        <ThemeToggle className="theme-toggle-button" toggleTheme={toggleTheme} isDark={theme === "dark"} />
         <button onClick={isLoggedIn ? onLogout : onLoginClick} className="login-button">
           {isLoggedIn ? "Logout" : "Login"}
         </button>

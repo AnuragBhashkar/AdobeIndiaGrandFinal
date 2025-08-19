@@ -1,9 +1,10 @@
 import React from "react";
 import { Moon, Sun } from "lucide-react";
 
-const ThemeToggle = ({ toggleTheme, isDark }) => {
+const ThemeToggle = ({ toggleTheme, isDark, className }) => {
   return (
     <button
+      className={className}
       onClick={toggleTheme}
 
       style={{

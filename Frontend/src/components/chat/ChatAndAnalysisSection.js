@@ -85,7 +85,7 @@ const ChatAndAnalysisSection = ({
             </button>
         </div>
 
-        <div style={styles.insightsPanel}>
+        <div className="insights-panel" style={styles.insightsPanel}>
             {activeTab === 'analysis' && analysisResult && (
                 <div style={styles.analysisResult}>
                     <h4 style={{marginBottom: "0rem", marginTop: "0.2rem"}}>Initial Insights:</h4>
