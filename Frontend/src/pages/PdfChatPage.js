@@ -88,7 +88,7 @@ const PdfChatPage = ({ userToken }) => {
     setLoading(true);
     setError("");
     setTranslatedInsights(null);
-    setIsSidebarOpen(false); // This is the new line that closes the sidebar
+    setIsSidebarOpen(false);
     try {
       const response = await apiClient.get(`/sessions/${selectedSessionId}`);
       const sessionData = response.data;
@@ -214,13 +214,12 @@ const PdfChatPage = ({ userToken }) => {
                 <>
                   <label
                     htmlFor="file-upload"
-                    style={{
-                      ...styles.uploadButton,
-                      padding: "0.3rem 0.8rem",
-                      fontSize: "0.85rem",
-                      width: "120px",
-                      textAlign: "center",
-                      cursor: "pointer",
+                    className="action-button" // ADDED CLASS
+                    style={{ // Custom styles for this specific button
+                      padding: "0.5rem 1rem",
+                      fontSize: "0.9rem",
+                      width: "auto", // Allow button to size to content
+                      flexShrink: 0,
                     }}
                   >
                     Upload PDFs
@@ -270,9 +269,7 @@ const PdfChatPage = ({ userToken }) => {
                       className="pdf-list-item"
                       style={{
                         ...styles.pdfListItem,
-                        ...(selectedPDF?.name === pdf.name && {
-                          background: "#333333",
-                        }),
+                        ...(selectedPDF?.name === pdf.name && styles.activePdfListItem),
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
@@ -299,7 +296,7 @@ const PdfChatPage = ({ userToken }) => {
                         }}
                         style={{
                           marginLeft: "0.5rem",
-                          color: "white",
+                          color: styles.pdfListItem.color,
                           background: "transparent",
                           border: "none",
                           cursor: "pointer",
@@ -346,7 +343,7 @@ const PdfChatPage = ({ userToken }) => {
             >
               <button
                 onClick={handleStartAnalysis}
-                style={styles.button}
+                className="action-button" // ADDED CLASS
                 disabled={loading}
               >
                 {loading ? "Analyzing..." : "Generate Insights"}
@@ -355,7 +352,8 @@ const PdfChatPage = ({ userToken }) => {
               {isPersonaMinimized && (
                 <button
                   onClick={() => setIsPersonaMinimized(false)}
-                  style={{ ...styles.button, fontSize: "0.85rem" }}
+                  className="action-button" // ADDED CLASS
+                  style={{ fontSize: "0.85rem" }} // Keep specific style override if needed
                 >
                   🔼 Maximize Persona & Job
                 </button>

@@ -60,7 +60,7 @@ img {
 }
 
 /* --- General Button & Input Styles --- */
-.action-button, .new-chat-button, .upload-button, .login-button, .modal-submit-button, .cta-button {
+.action-button, .new-chat-button, .upload-button, .login-button, .modal-submit-button, .cta-button, .new-chat-inline {
   padding: 0.75rem 1.5rem;
   background-color: var(--primary);
   color: var(--button-text);
@@ -70,6 +70,8 @@ img {
   font-weight: bold;
   transition: all 0.2s ease-in-out;
   text-align: center;
+  width: 100%; /* Ensure full width in sidebar */
+  box-sizing: border-box; /* Include padding and border in the element's total width and height */
 }
 .action-button:disabled {
   opacity: 0.6;
@@ -81,7 +83,8 @@ img {
 .upload-button:hover:not(:disabled),
 .login-button:hover:not(:disabled),
 .modal-submit-button:hover:not(:disabled),
-.cta-button:hover:not(:disabled) {
+.cta-button:hover:not(:disabled),
+.new-chat-inline:hover:not(:disabled) {
   transform: translateY(-4px);
   background-color: #ff1a1a;
   border-color: #ff1a1a;
@@ -708,4 +711,44 @@ img {
   .chat-panel {
     flex: 0.3;
   }
+}
+/* --- Get Insights on Selection Button --- */
+/* --- Get Insights on Selection Button (Gemini-Inspired) --- */
+.insights-button {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10;
+  padding: 12px 20px;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1rem;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  
+  /* The Gemini-style gradient */
+  background-image: linear-gradient(
+    115deg, 
+    #4285F4, /* Blue */
+    #9B59B6, /* Purple */
+    #F4B400, /* Orange */
+    #DB4437  /* Red */
+  );
+  
+  /* Set a larger background size so we can animate it */
+  background-size: 200% 200%;
+  
+  /* Smooth transition for all properties, including the background position */
+  transition: all 0.4s ease-in-out;
+}
+
+.insights-button:hover {
+  /* This moves the gradient to a new position, creating a shimmer effect */
+  background-position: 100% 0;
+  
+  /* Keep the nice shadow and lift effect from before */
+  box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+  transform: translateY(-3px);
 }
