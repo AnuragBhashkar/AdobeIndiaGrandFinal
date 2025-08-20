@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Footer from '../components/common/Footer';
-import emailjs from '@emailjs/browser'; // Import EmailJS
+import emailjs from '@emailjs/browser';
 
 const ContactUsPage = ({ onNavigate }) => {
     const [formData, setFormData] = useState({
@@ -41,9 +41,11 @@ const ContactUsPage = ({ onNavigate }) => {
         
         setIsSubmitting(true);
 
-        const serviceId = process.env.REACT_APP_EMAILJS_SERVICE_ID;
-        const templateId = process.env.REACT_APP_EMAILJS_TEMPLATE_ID;
-        const publicKey = process.env.REACT_APP_EMAILJS_PUBLIC_KEY;
+        // --- Replace these placeholders with your actual EmailJS credentials ---
+        const serviceId = 'service_cfehi6b';
+        const templateId = 'template_9pirk72';
+        const publicKey = '3mddG1BXSjghN0Sg4';
+        // --------------------------------------------------------------------
 
         const templateParams = {
             ...formData,
@@ -113,22 +115,22 @@ const ContactUsPage = ({ onNavigate }) => {
                 <div className="address-details">
                     <h3>Our Office</h3>
                     <p><strong>PaperTrail Headquarters</strong></p>
-                    <p>123 Innovation Drive, Tech Park</p>
-                    <p>Jaipur, Rajasthan, 302012</p>
+                    <p>Archimedes Hostel, Chitkara University</p>
+                    <p>Rajpura, Punjab, 140401</p>
                     <p>India</p>
                     <p><strong>Email:</strong> support@papertrail.com</p>
                     <p><strong>Phone:</strong> +91 (141) 555-0123</p>
                 </div>
                 <div className="map-iframe">
                     <iframe
-                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d227748.38256244714!2d75.6504722204738!3d26.88544791928236!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x396c4adf4c57e281%3A0xce1c63a0cf22e09!2sJaipur%2C%20Rajasthan!5e0!3m2!1sen!2sin!4v1692882594458!5m2!1sen!2sin"
+                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3437.151952790351!2d76.65720281512715!3d30.51633198171181!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390fc32344a6e2d7%3A0x81b346dee91799ca!2sChitkara%20University!5e0!3m2!1sen!2sin!4v1663486938641!5m2!1sen!2sin"
                         width="100%"
                         height="100%"
                         style={{ border: 0, borderRadius: '12px' }}
                         allowFullScreen=""
                         loading="lazy"
                         referrerPolicy="no-referrer-when-downgrade"
-                        title="Jaipur Office Location"
+                        title="Chitkara University Location"
                     ></iframe>
                 </div>
             </div>

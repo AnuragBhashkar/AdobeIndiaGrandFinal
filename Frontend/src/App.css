@@ -6,6 +6,9 @@ body {
   font-family: 'Segoe UI', Roboto, sans-serif;
   transition: background-color 0.3s, color 0.3s;
   font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 img {
@@ -57,7 +60,7 @@ img {
 }
 
 /* --- General Button & Input Styles --- */
-.action-button, .new-chat-button, .upload-button, .login-button, .modal-submit-button, .cta-button {
+.action-button, .new-chat-button, .upload-button, .login-button, .modal-submit-button, .cta-button, .new-chat-inline {
   padding: 0.75rem 1.5rem;
   background-color: var(--primary);
   color: var(--button-text);
@@ -67,6 +70,8 @@ img {
   font-weight: bold;
   transition: all 0.2s ease-in-out;
   text-align: center;
+  width: 100%; /* Ensure full width in sidebar */
+  box-sizing: border-box; /* Include padding and border in the element's total width and height */
 }
 .action-button:disabled {
   opacity: 0.6;
@@ -78,7 +83,8 @@ img {
 .upload-button:hover:not(:disabled),
 .login-button:hover:not(:disabled),
 .modal-submit-button:hover:not(:disabled),
-.cta-button:hover:not(:disabled) {
+.cta-button:hover:not(:disabled),
+.new-chat-inline:hover:not(:disabled) {
   transform: translateY(-4px);
   background-color: #ff1a1a;
   border-color: #ff1a1a;
@@ -112,23 +118,23 @@ img {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.3rem 1rem;
+  padding: 1rem;
   background-color: var(--secondary);
   border-bottom: 1px solid var(--border);
   position: relative;
 }
 .nav-left { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
-.logo-text { font-weight: bold; font-size: 1.3rem; color: var(--header); }
-.nav-center { display: flex; gap: 2rem; }
-.nav-right { display: flex; align-items: center; gap: 1rem; }
-.nav-link { 
-  color: var(--text); 
-  font-weight: 500; 
-  cursor: pointer; 
-  background: none; 
-  border: none; 
-  padding: 0.35rem 0.75rem; 
-  font: inherit; 
+.logo-text { font-weight: bold; font-size: 1.25rem; color: var(--header); }
+.nav-center { display: none; }
+.nav-right { display: none; } /* Hide by default on mobile */
+.nav-link {
+  color: var(--text);
+  font-weight: 500;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0.5rem 1rem;
+  font: inherit;
   text-decoration: none;
   border-radius: 6px;
   transition: background-color 0.2s ease-in-out, transform 0.2s ease-in-out;
@@ -158,19 +164,33 @@ img {
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.hamburger-menu { display: none; }
+.hamburger-menu { display: block; }
 .hamburger-button { background: none; border: none; color: var(--text); cursor: pointer; padding: 8px; font-size: 24px; }
-.mobile-menu { 
-  display: none;
+.mobile-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
   background-color: var(--secondary);
-  padding: 1rem;
+  padding: 1.5rem;
   z-index: 100;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  transform: translateY(-150%);
+  transition: transform 0.3s ease-in-out;
+}
+
+.mobile-menu.open {
+    transform: translateY(0);
 }
 
 .mobile-menu .nav-link {
   display: block;
   width: 100%;
-  text-align: left;
+  text-align: center;
   padding: 1rem;
   border-bottom: 1px solid var(--border);
 }
@@ -181,7 +201,11 @@ img {
 }
 
 /* --- Home & About Pages --- */
-.page-container { background-color: var(--background); color: var(--text); }
+.page-container {
+    background-color: var(--background);
+    color: var(--text);
+    overflow-x: hidden;
+}
 
 /* --- Parallax Hero Section --- */
 .hero-parallax {
@@ -196,6 +220,7 @@ img {
   background-repeat: no-repeat;
   background-size: cover;
   position: relative;
+  padding: 4rem 1rem;
 }
 
 .hero-parallax::before {
@@ -210,7 +235,7 @@ img {
 
 /* --- About Us Page Hero Banner --- */
 .about-hero {
-  padding: 11rem 2rem;
+  padding: 6rem 1.5rem;
   text-align: center;
   background-color: var(--secondary);
 }
@@ -222,24 +247,25 @@ img {
   padding: 2rem;
 }
 
-.greeting-text { 
-  color: var(--primary); 
-  font-size: 2rem; 
-  margin: 0 0 0.5rem 0; 
+.greeting-text {
+  color: var(--primary);
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  margin: 0 0 0.5rem 0;
   text-shadow: 1px 1px 3px rgba(0,0,0,0.4);
 }
 
 /* --- UPDATED: General Hero Title/Subtitle Styles --- */
-.hero-title { 
-  font-size: 3.5rem; 
-  font-weight: bold; 
-  margin: 0; 
+.hero-title {
+  font-size: clamp(2.5rem, 8vw, 4.5rem);
+  font-weight: bold;
+  margin: 0;
+  line-height: 1.1;
 }
 
-.hero-subtitle { 
-  font-size: 1.25rem; 
-  max-width: 600px; 
-  margin: 1rem auto 2rem auto; 
+.hero-subtitle {
+  font-size: clamp(1rem, 3vw, 1.25rem);
+  max-width: 600px;
+  margin: 1.5rem auto 2.5rem auto;
   opacity: 0.9;
 }
 
@@ -263,7 +289,7 @@ img {
 
 /* --- Features Section Styles (Used on Home and About pages) --- */
 .features-section {
-  padding: 4rem 2rem;
+  padding: 4rem 1.5rem;
   background-color: var(--secondary);
   text-align: center;
 }
@@ -271,8 +297,8 @@ img {
 .features-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 2.5rem;
-  max-width: 1100px;
+  gap: 2rem;
+  max-width: 1200px;
   margin: 3rem auto 0;
 }
 
@@ -282,6 +308,12 @@ img {
   border-radius: 12px;
   border: 1px solid var(--border);
   box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
 }
 
 .feature-icon {
@@ -301,38 +333,48 @@ img {
 
 /* --- About Project Section --- */
 .about-project-section {
-  padding: 4rem 2rem;
+  padding: 4rem 1.5rem;
   text-align: center;
 }
 
 .about-mission-section {
-  padding: 4rem 2rem;
+  padding: 4rem 1.5rem;
   background-color: var(--background);
 }
 
 /* --- Two-Column Container --- */
 .about-section-container {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 3rem;
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
   text-align: left;
 }
 
 .about-text, .about-image {
-  flex: 1;
-  min-width: 300px;
+  flex: 1 1 300px;
 }
 
-.section-title { font-size: 2.5rem; color: var(--header); margin-bottom: 1rem; }
-.section-text { font-size: 1.1rem; line-height: 1.6; max-width: 800px; opacity: 0.9; margin: 0 auto; }
+.section-title {
+    font-size: clamp(2rem, 6vw, 2.5rem);
+    color: var(--header);
+    margin-bottom: 1rem;
+}
+.section-text {
+    font-size: clamp(1rem, 2.5vw, 1.1rem);
+    line-height: 1.6;
+    max-width: 800px;
+    opacity: 0.9;
+    margin: 0 auto;
+}
 
 /* --- Enhanced Footer Styles --- */
 .footer-enhanced {
   background-color: var(--secondary);
   color: var(--text);
-  padding: 3rem 2rem;
+  padding: 3rem 1.5rem;
   border-top: 1px solid var(--border);
 }
 
@@ -341,14 +383,13 @@ img {
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 2rem;
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
-  text-align: left;
+  text-align: center;
 }
 
 .footer-section {
-  flex: 1;
-  min-width: 250px;
+  flex: 1 1 250px;
 }
 
 .footer-title {
@@ -391,6 +432,7 @@ img {
 .social-icons {
   display: flex;
   gap: 1.5rem;
+  justify-content: center;
 }
 
 .social-icon-link {
@@ -425,8 +467,8 @@ img {
 
 
 /* --- Login Modal --- */
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-.modal-content { background-color: var(--secondary); padding: 2rem; border-radius: 8px; width: 90%; max-width: 400px; position: relative; }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; padding: 1rem; }
+.modal-content { background-color: var(--secondary); padding: 2rem; border-radius: 8px; width: 100%; max-width: 400px; position: relative; }
 .modal-close-button { position: absolute; top: 1rem; right: 1rem; background: none; border: none; cursor: pointer; color: var(--text); }
 .modal-title { text-align: center; margin: 0 0 1.5rem 0; color: var(--header); }
 .modal-form { display: flex; flex-direction: column; gap: 1rem; }
@@ -531,14 +573,13 @@ img {
   display: flex;
   flex-wrap: wrap;
   gap: 2rem;
-  padding: 4rem 2rem;
+  padding: 4rem 1.5rem;
   background-color: var(--secondary);
   border-top: 1px solid var(--border);
 }
 
 .address-details {
-  flex: 1;
-  min-width: 300px;
+  flex: 1 1 300px;
   text-align: left;
 }
 
@@ -555,286 +596,159 @@ img {
 }
 
 .map-iframe {
-  flex: 1;
-  min-width: 300px;
+  flex: 1 1 300px;
   min-height: 350px;
 }
 
 
 /* --- PDF Chat Page --- */
-.app-container { display: flex; height: calc(100vh - 59px); flex-direction: row; }
-.history-sidebar { width: 280px; background-color: var(--secondary); padding: 1rem; border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
-.history-sidebar.collapsed { width: 30px; transition: width 0.3s ease; }
-.history-sidebar.open { width: 200px; transition: width 0.3s ease; }
-.history-header { display: flex; align-items: center; gap: 0.5rem; color: var(--header); padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
-.history-title { margin: 0; font-size: 1.2rem; }
-.session-list { flex-grow: 1; overflow-y: auto; }
-.session-item { padding: 0.75rem; border-radius: 5px; margin-bottom: 0.5rem; cursor: pointer; border: 1px solid var(--border); transition: background-color 0.2s; }
-.session-item:hover { background-color: var(--input-bg); }
-.session-item.active { background-color: var(--primary); color: var(--active-item-text); border-color: var(--primary); }
-.session-persona { margin: 0 0 0.25rem 0; font-weight: bold; }
-.session-job { margin: 0; font-size: 0.9rem; opacity: 0.8; }
-.session-timestamp { margin: 0.5rem 0 0 0; font-size: 0.8rem; opacity: 0.6; }
-.main-content { display: flex; flex-grow: 1; overflow: hidden; flex-direction: row; }
-.viewer-panel { flex: 0.6; display: flex; flex-direction: column; background-color: var(--background); position: relative; border-right: 1px solid var(--border); }
-.viewer-placeholder { flex: 1; display: flex; justify-content: center; align-items: center; padding: 1rem; text-align: center; opacity: 0.7; }
-.chat-panel { flex: 1; background-color: var(--secondary); padding: 1rem; display: flex; flex-direction: column; overflow-y: hidden;  }
-.chat-panel-title { margin: 0 0 1rem 0; color: var(--header); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
-.chat-controls { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
-.pdf-list { display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.5rem 0; }
-.pdf-list-item { padding: 0.4rem 0.8rem; border-radius: 5px; cursor: pointer; white-space: nowrap; border: 1px solid var(--border); background-color: transparent; color: var(--text); }
-.pdf-list-item.active { background-color: var(--primary); color: var(--active-item-text); font-weight: bold; border-color: var(--primary); }
-.chat-box { flex-grow: 1; overflow-y: auto; padding: 0.5rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.75rem; border: 1px solid var(--border); border-radius: 8px; background-color: var(--background); }
-.chat-input-container { display: flex; gap: 0.5rem; margin-top: auto; }
-.chat-message { padding: 0.75rem 1rem; border-radius: 12px; max-width: 85%; line-height: 1.4; word-wrap: break-word; }
-.user-message { background-color: var(--message-bg-user); color: var(--message-text-user); align-self: flex-end; border-bottom-right-radius: 2px; }
-.bot-message { background-color: var(--message-bg-bot); color: var(--message-text-bot); align-self: flex-start; border-bottom-left-radius: 2px; }
-.loading-indicator { align-self: center; opacity: 0.8; font-style: italic; padding: 1rem; }
-.placeholder-text { text-align: center; opacity: 0.7; margin: auto; }
-.error-message { color: #ff4d4d; font-size: 0.9rem; text-align: center; }
-
-/* --- Analysis & Insights --- */
-.analysis-result { padding: 0.5rem; background-color: var(--background); border-radius: 8px; margin-bottom: 1rem; }
-.analysis-snippet { border-left: 3px solid var(--primary); padding: 10px; margin: 10px 0; background-color: var(--input-bg); border-radius: 4px; cursor: pointer; opacity: 0; animation: fadeIn 0.5s forwards; }
-.analysis-reason { font-style: italic; opacity: 0.9; margin-bottom: 8px; font-size: 0.9rem; }
-.snippet-footer { text-align: right; font-size: 0.8rem; opacity: 0.7; margin-top: 8px; }
-.llm-insights-container { margin-top: 1.5rem; padding: 1rem; background-color: var(--secondary); border-radius: 8px; border: 1px solid var(--border); }
-.insights-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 1rem; }
-.translate-all-container { display: flex; align-items: center; }
-.loading-text-small { font-size: 0.9rem; margin-right: 8px; }
-.show-original-button { background: none; border: 1px solid var(--border); color: var(--text); cursor: pointer; border-radius: 4px; padding: 2px 6px; font-size: 0.75rem; margin-right: 8px; }
-.insight-category { margin-bottom: 1rem; }
-.insight-category-title { margin: 0 0 0.5rem 0; color: var(--header); font-weight: bold; font-size: 1.1rem; }
-.insight-category ul { padding-left: 20px; margin: 0; }
-.podcast-container { margin-top: 1.5rem; padding: 1rem; background-color: var(--secondary); border-radius: 8px; border: 1px solid var(--border); }
-.podcast-controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-.language-selector { padding: 0.75rem; background-color: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
-.audio-player { width: 100%; margin-top: 1rem; }
-.structured-text-viewer p { margin: 0.5rem 0; }
-.structured-list-item { display: flex; }
-.bullet-point { margin-right: 8px; }
-.structured-subheading { font-weight: bold; }
+.app-container {
+  display: flex;
+  flex-direction: column; /* Mobile-first: single column layout */
+  height: calc(100vh - 59px);
+  overflow: hidden;
+}
+.history-sidebar {
+  width: 100%;
+  background-color: var(--secondary);
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  transition: width 0.3s ease-in-out;
+}
+.main-content {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  overflow: hidden;
+  transition: width 0.3s ease-in-out, margin-left 0.3s ease-in-out;
+}
+.viewer-panel {
+  flex: 1;
+  position: relative;
+  min-height: 40vh; /* Ensure it has a minimum height on mobile */
+}
+.chat-panel {
+  flex: 1;
+  background-color: var(--secondary);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 60vh;
+}
 
 /* --- Responsive Design --- */
 
-/* Tablets and smaller laptops */
-@media (max-width: 1024px) {
-    /* More compact navbar at 1024px */
-    .navbar {
-        padding: 0.25rem 0.8rem;
-    }
-    .logo-text {
-        font-size: 1.1rem;
-    }
-    .nav-link {
-        padding: 0.25rem 0.5rem;
-    }
-    .theme-toggle-button {
-        width: 28px;
-        height: 28px;
-    }
-    /* Smaller Logout/Login button */
-    .nav-right .login-button {
-        padding: 0.25rem 0.6rem;
-        font-size: 0.85rem;
-        border-width: 2px;
-        border-radius: 6px;
-    }
-    .app-container {
-        height: auto !important;
-        min-height: calc(100vh - 59px);
-    }
-    /* Constrain sidebar so only its session list scrolls */
-    .history-sidebar {
-        height: 90vh;
-        overflow: hidden;
-        width: 160px; /* narrower sidebar on tablet/smaller laptops */
-    }
-    .history-sidebar.open { width: 180px; }
-    .history-sidebar.collapsed { width: 24px; }
-    .history-sidebar .session-list {
-        overflow-y: auto;
-    }
-    .main-content {
-        flex-direction: row;
-        flex-grow: 1;
-        overflow: hidden;
-        align-items: flex-start; /* allow panels to have own heights */
-    }
-    .viewer-panel {
-        flex: 0 0 50% !important;
-        max-width: 50%;
-        border-right: 1px solid var(--border);
-        border-bottom: none;
-        height: 95vh; /* reduced height for PDF view */
-        min-height: 95vh;
-        overflow: hidden;
-    }
-    .chat-panel { flex: 1; background-color: var(--secondary); padding: 1rem; display: flex; flex-direction: column; overflow-y: hidden;  }
-    .chat-panel .persona-input {
-        padding: 0.32rem 0.45rem;
-        font-size: 0.8rem;
-        width: 38vw;
-    }
-    .chat-panel .job-textarea {
-        padding: 0.32rem 0.45rem;
-        font-size: 0.8rem;
-        min-height: 80px; /* reduced height */
-        max-height: 100px;
-    }
-    /* Make the top insights area scroll independently (same behavior as full screen) */
-    .chat-panel .insights-panel {
-      height: 35vh;
-        /* flex: 1 1 auto;
-        overflow-y: auto !important;
-        max-height: 45vh;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-gutter: stable; */
-    }
-}
-
-
-/* Mobile phones */
-@media (max-width: 768px) {
-  .hero-title {
-    font-size: 2.5rem;
-  }
-
-  .hero-subtitle {
-    font-size: 1rem;
-  }
-
+/* Medium devices (tablets, 768px and up) */
+@media (min-width: 768px) {
   .navbar {
-    padding: 0.5rem 1rem;
+    padding: 1rem 2rem;
   }
-  /* .nav-center, .nav-right .login-button, .nav-right .theme-toggle-button {
-    display: none;
-  } */
-  /* .hamburger-menu {
-    display: block;
-  } */
-  .mobile-menu {
+  .nav-center {
     display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background-color: var(--secondary);
-    border-bottom: 1px solid var(--border);
-    padding: 1rem;
+    gap: 1.5rem;
+  }
+  .nav-right {
+    display: flex;
+    align-items: center;
     gap: 1rem;
-    z-index: 100;
   }
-  .hero-parallax, .about-hero {
-    padding: 4rem 1rem;
+  .hamburger-menu {
+    display: none;
   }
-
-  .features-section, .about-project-section {
-    padding: 3rem 1rem;
+  .mobile-menu {
+    display: none;
   }
-
-  .footer-enhanced {
-    padding: 2rem 1rem;
-  }
-  .about-project-section, .hero-parallax, .about-hero {
-    padding: 3rem 1rem;
-  }
-  .about-section-container {
-      flex-direction: column;
-      gap: 2rem;
-  }
-  .about-text {
-      order: 2;
-      text-align: center;
-  }
-  .about-image {
-      order: 1;
-  }
-  .section-title {
-      text-align: center;
-      font-size: 1.8rem;
-  }
-  .section-text {
-    font-size: 0.95rem;
-  }
-  .location-container {
-      padding: 3rem 1rem;
-      flex-direction: column;
-  }
-  .address-details {
-      text-align: center;
-  }
-  .form-container {
-      padding: 1.5rem;
-  }
-  .footer-content {
-      flex-direction: column;
-      text-align: center;
-  }
-  .social-icons {
-      justify-content: center;
-  }
-
   .app-container {
-    flex-direction: column;
-    height: auto;
-    min-height: calc(100vh - 59px);
+    flex-direction: row; /* Switch to a row layout */
   }
   .history-sidebar {
-    width: 100%;
-    box-sizing: border-box;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    height: auto;
-    max-height: none;
-    overflow: hidden;
+    width: 280px;
+    border-right: 1px solid var(--border);
+    border-bottom: none;
   }
-  /* Ensure collapsed/open widths don't override on mobile */
-  .history-sidebar.collapsed,
-  .history-sidebar.open {
-    width: 100%;
+  .history-sidebar.collapsed {
+    width: 50px; /* A bit more space for the icon */
   }
-  /* Horizontal scroll for session list */
-  .history-sidebar .session-list {
-    display: flex;
-    gap: 0.5rem;
-    overflow-x: auto;
-    overflow-y: hidden;
-    white-space: nowrap;
-    padding: 0.5rem 0;
-  }
-  .history-sidebar .new-chat-inline {
-    flex: 0 0 auto;
-    padding: 0.4rem 0.8rem;
-    border: 1px dashed var(--border);
-    background: transparent;
-    color: var(--text);
-    border-radius: 6px;
-    cursor: pointer;
-  }
-  .history-sidebar .session-list > div {
-    flex: 0 0 auto; /* keep items inline for horizontal scrolling */
-    min-width: 240px;
+  .main-content {
+    flex-direction: row;
+    flex-grow: 1;
   }
   .viewer-panel {
-    min-height: 50vh;
+    flex: 0.6;
+    border-right: 1px solid var(--border);
   }
   .chat-panel {
-    min-height: 50vh;
-    padding: 0.75rem;
+    flex: 0.4;
   }
-  .chat-message {
-    max-width: 90%;
+  .footer-content {
+    text-align: left;
   }
-  .podcast-controls, .insights-header {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 0.75rem;
+  .social-icons {
+    justify-content: flex-start;
   }
-  .language-selector, .action-button {
-      width: 100%;
-      box-sizing: border-box;
+  /* This is the key for the expanding PDF viewer */
+  .app-container:not(.sidebar-open) .viewer-panel {
+    flex: 1; /* Take up all available space */
   }
+  .app-container:not(.sidebar-open) .chat-panel {
+    flex: 0.4; /* Keep the chat panel size consistent */
+  }
+}
+
+/* Large devices (laptops/desktops, 1024px and up) */
+@media (min-width: 1024px) {
+  .history-sidebar {
+    width: 320px;
+  }
+  .history-sidebar.collapsed {
+    width: 60px;
+  }
+  .viewer-panel {
+    flex: 0.7;
+  }
+  .chat-panel {
+    flex: 0.3;
+  }
+}
+/* --- Get Insights on Selection Button --- */
+/* --- Get Insights on Selection Button (Gemini-Inspired) --- */
+.insights-button {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10;
+  padding: 12px 20px;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1rem;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  
+  /* The Gemini-style gradient */
+  background-image: linear-gradient(
+    115deg, 
+    #4285F4, /* Blue */
+    #9B59B6, /* Purple */
+    #F4B400, /* Orange */
+    #DB4437  /* Red */
+  );
+  
+  /* Set a larger background size so we can animate it */
+  background-size: 200% 200%;
+  
+  /* Smooth transition for all properties, including the background position */
+  transition: all 0.4s ease-in-out;
+}
+
+.insights-button:hover {
+  /* This moves the gradient to a new position, creating a shimmer effect */
+  background-position: 100% 0;
+  
+  /* Keep the nice shadow and lift effect from before */
+  box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+  transform: translateY(-3px);
 }

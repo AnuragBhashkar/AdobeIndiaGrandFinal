@@ -1,19 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getPdfChatStyles } from '../../styles/appStyles';
-import AnimatedBotMessage from './AnimatedBotMessage';
 import apiClient from '../../api/apiClient';
 
 const ChatAndAnalysisSection = ({
-    messages, onSendMessage, loading, analysisResult, onInsightClick,
+    loading, analysisResult, onInsightClick,
     translatedInsights, setTranslatedInsights, sessionId,
     selectionInsights, isSelectionLoading, activeTab, setActiveTab,
     userToken
 }) => {
   const { currentTheme } = useTheme();
   const styles = getPdfChatStyles(currentTheme);
-  const [input, setInput] = useState('');
-  const chatBoxRef = useRef(null);
+  const insightsPanelRef = useRef(null);
 
   const [isPodcastLoading, setIsPodcastLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
@@ -23,10 +21,8 @@ const ChatAndAnalysisSection = ({
   const [translationError, setTranslationError] = useState('');
 
   useEffect(() => {
-    if (chatBoxRef.current) chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight;
-  }, [messages, loading, audioUrl, analysisResult, translatedInsights, selectionInsights]);
-
-  const handleSend = () => { if (!input.trim()) return; onSendMessage(input); setInput(''); };
+    if (insightsPanelRef.current) insightsPanelRef.current.scrollTop = 0;
+  }, [analysisResult, translatedInsights, selectionInsights, activeTab]);
 
   const handleTranslateToHindi = async () => {
     if (!sessionId) return;
@@ -68,7 +64,7 @@ const ChatAndAnalysisSection = ({
   const displayInsights = translatedInsights || analysisResult?.llm_insights;
 
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
         <div style={styles.tabsContainer}>
             <button
                 style={{...styles.tabButton, ...(activeTab === 'analysis' && styles.activeTab)}}
@@ -84,7 +80,7 @@ const ChatAndAnalysisSection = ({
             </button>
         </div>
 
-        <div className="insights-panel" style={styles.insightsPanel}>
+        <div ref={insightsPanelRef} className="insights-panel" style={styles.insightsPanel}>
             {activeTab === 'analysis' && analysisResult && (
                 <div style={styles.analysisResult}>
                     <h4 style={{marginBottom: "0rem", marginTop: "0.2rem"}}>Initial Insights:</h4>
@@ -184,28 +180,7 @@ const ChatAndAnalysisSection = ({
                 </div>
             )}
         </div>
-
-        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        <div ref={chatBoxRef} style={{ ...styles.chatBox, flex: 1, overflowY: "auto" }}>
-            {/* chat messages here */}
-        </div>
-        <div style={{ ...styles.chatInputContainer, flexShrink: 0 }}>
-            <input
-            type="text"
-            placeholder="Ask a follow-up..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            style={styles.input}
-            disabled={!analysisResult || loading}
-            />
-            <button onClick={handleSend} style={styles.button} disabled={!analysisResult || loading}>
-            Send
-            </button>
-        </div>
-        </div>
-
-    </>
+    </div>
   );
 };
 
