@@ -1,3 +1,5 @@
+# Backend/session_manager.py
+
 import json
 import uuid
 import logging
@@ -12,7 +14,6 @@ SESSION_HISTORY_PREFIX = "session:history:"
 SESSION_ANALYSIS_PREFIX = "session:analysis:"
 SESSION_FILES_PREFIX = "session:files:"
 USER_PREFIX = "user:"
-# USER_SUMMARIES_PREFIX is no longer needed with the new approach
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,14 +33,15 @@ def create_user(email: str, hashed_password: str, name: str):
         "name": name
     })
 
+
 def get_user(email: str) -> Optional[Dict[str, Any]]:
     redis = get_redis_client()
     if not redis:
         return None
-
     user_key = f"{USER_PREFIX}{email}"
     user_data = redis.hgetall(user_key)
     return user_data if user_data else None
+
 
 def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
     user = get_user(email)
@@ -48,6 +50,7 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
     if not verify_password(password, user['hashed_password']):
         return None
     return user
+
 
 # --- Session Management ---
 
@@ -62,6 +65,7 @@ def create_session(analysis_result: Dict[str, Any], user_id: str) -> Optional[st
     user_id_from_meta = metadata.get('user_id', user_id)
 
     with redis.pipeline() as pipe:
+        # Session metadata
         meta_key = f"{SESSION_META_PREFIX}{session_id}"
         pipe.hset(meta_key, mapping={
             "persona": metadata.get("persona", ""),
@@ -72,16 +76,23 @@ def create_session(analysis_result: Dict[str, Any], user_id: str) -> Optional[st
             "user_id": user_id_from_meta
         })
 
+        # Analysis result
         analysis_key = f"{SESSION_ANALYSIS_PREFIX}{session_id}"
         pipe.set(analysis_key, json.dumps(analysis_result))
 
+        # Files
         files_key = f"{SESSION_FILES_PREFIX}{session_id}"
-        
-        # FIX IS HERE: Use the correct key "file_path_map" and get its values
         file_path_map = metadata.get("file_path_map", {})
         if file_path_map:
             pipe.rpush(files_key, *file_path_map.values())
 
+        # Initialize chat history with a starting message
+        history_key = f"{SESSION_HISTORY_PREFIX}{session_id}"
+        pipe.delete(history_key)
+        pipe.rpush(history_key, json.dumps({"role": "bot", "content": "Analysis complete! Here are the key insights."}))
+
+
+        # Add session to user session set
         user_sessions_key = f"user:{user_id_from_meta}:sessions"
         pipe.sadd(user_sessions_key, session_id)
 
@@ -90,6 +101,7 @@ def create_session(analysis_result: Dict[str, Any], user_id: str) -> Optional[st
     logger.info(f"✅ New session created for user {user_id_from_meta}. ID: {session_id}")
     return session_id
 
+
 def get_session(session_id: str) -> Optional[Dict[str, Any]]:
     redis = get_redis_client()
     if not redis:
@@ -97,15 +109,16 @@ def get_session(session_id: str) -> Optional[Dict[str, Any]]:
 
     analysis_key = f"{SESSION_ANALYSIS_PREFIX}{session_id}"
     history_key = f"{SESSION_HISTORY_PREFIX}{session_id}"
+    files_key = f"{SESSION_FILES_PREFIX}{session_id}"
 
     analysis_data_json = redis.get(analysis_key)
-    files_key = f"{SESSION_FILES_PREFIX}{session_id}"
-    file_paths = redis.lrange(files_key, 0, -1)
     if not analysis_data_json:
         return None
 
     chat_history_raw = redis.lrange(history_key, 0, -1)
     chat_history = [json.loads(msg) for msg in chat_history_raw]
+
+    file_paths = redis.lrange(files_key, 0, -1)
 
     return {
         "analysis": json.loads(analysis_data_json),
@@ -113,13 +126,14 @@ def get_session(session_id: str) -> Optional[Dict[str, Any]]:
         "file_paths": file_paths
     }
 
+
 def add_message_to_history(session_id: str, message: Dict[str, str]):
     redis = get_redis_client()
     if not redis:
         return
-
     history_key = f"{SESSION_HISTORY_PREFIX}{session_id}"
     redis.rpush(history_key, json.dumps(message))
+
 
 def get_all_sessions_metadata_for_user(user_id: str) -> List[Dict[str, Any]]:
     redis = get_redis_client()
@@ -133,7 +147,6 @@ def get_all_sessions_metadata_for_user(user_id: str) -> List[Dict[str, Any]]:
     for session_id in session_ids:
         meta_key = f"{SESSION_META_PREFIX}{session_id}"
         metadata = redis.hgetall(meta_key)
-
         if metadata:
             sessions_metadata.append({
                 "id": session_id,
@@ -143,12 +156,14 @@ def get_all_sessions_metadata_for_user(user_id: str) -> List[Dict[str, Any]]:
                 "doc_count": int(metadata.get('doc_count', 0))
             })
 
+    # FIX: Provide a default timestamp for sorting to prevent errors
     sessions_metadata.sort(
         key=lambda x: x.get('timestamp') or '1970-01-01T00:00:00Z',
         reverse=True
     )
 
     return sessions_metadata
+
 
 def update_session(session_id: str, analysis_result: Dict[str, Any]):
     redis = get_redis_client()
@@ -157,15 +172,11 @@ def update_session(session_id: str, analysis_result: Dict[str, Any]):
         return
 
     meta_key = f"{SESSION_META_PREFIX}{session_id}"
-    # The user_id should be present in the new analysis_result metadata
     metadata = analysis_result.get("metadata", {})
-    user_id = metadata.get("user_id")
-
-    if not user_id:
-        # Fallback for safety, though it shouldn't be needed
-        user_id = redis.hget(meta_key, "user_id")
+    user_id = metadata.get("user_id") or redis.hget(meta_key, "user_id")
 
     with redis.pipeline() as pipe:
+        # Update metadata
         pipe.hset(meta_key, mapping={
             "persona": metadata.get("persona", ""),
             "job_to_be_done": metadata.get("job_to_be_done", ""),
@@ -175,12 +186,11 @@ def update_session(session_id: str, analysis_result: Dict[str, Any]):
             "user_id": user_id
         })
 
+        # Update analysis result
         analysis_key = f"{SESSION_ANALYSIS_PREFIX}{session_id}"
         pipe.set(analysis_key, json.dumps(analysis_result))
 
-        history_key = f"{SESSION_HISTORY_PREFIX}{session_id}"
-        pipe.delete(history_key)
-
+        # ✅ Do NOT delete chat history
         pipe.execute()
 
     logger.info(f"✅ Session updated with new analysis. ID: {session_id}")

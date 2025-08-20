@@ -1,5 +1,3 @@
-spacy
-sentence-transformers
 scipy
 pymupdf
 pandas
