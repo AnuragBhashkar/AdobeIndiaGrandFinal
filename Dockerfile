@@ -1,41 +1,37 @@
-
 FROM python:3.10-slim
 
 WORKDIR /app
 
-
+# Install Redis + Node.js for frontend
 RUN apt-get update && apt-get install -y \
-    libgl1 \
-    libglib2.0-0 \
     redis-server \
     curl \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy Redis config
+COPY redis.conf /usr/local/etc/redis/redis.conf
 
+# ---------- Frontend ----------
+WORKDIR /app/frontend
 COPY Frontend/package.json Frontend/package-lock.json ./
 RUN npm install
-
 COPY Frontend/ .
-
 ARG ADOBE_EMBED_API_KEY
 ENV REACT_APP_ADOBE_CLIENT_ID=${ADOBE_EMBED_API_KEY}
 RUN npm run build
 
+# ---------- Backend ----------
+WORKDIR /app
 COPY Backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY Backend/ .
 
-RUN mv build static
+# Copy start.sh to root
+COPY Backend/start.sh /start.sh
+RUN chmod +x /start.sh
 
-RUN mkdir -p /data
-VOLUME /data
-VOLUME /app/session_files
+EXPOSE 8080 6379
 
-COPY Backend/start.sh .
-RUN chmod +x ./start.sh
-
-EXPOSE 8080
-
-CMD ["./start.sh"]
+CMD ["/start.sh"]
