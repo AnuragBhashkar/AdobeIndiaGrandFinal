@@ -15,7 +15,7 @@ This project comes with a set of powerful features designed to enhance the user'
 * **Instant Section Navigation**: Jump directly to the relevant section of the PDF from an extracted insight with a **single click**. This allows you to navigate to the exact source of information within the document in the blink of an eye. ⚡️
 
 ---
-#### ADOBE_EMBED_API_KEY=567c5c63bf92461db01e4c378384df9d
+#### REACT_APP_ADOBE_CLIENT_ID=567c5c63bf92461db01e4c378384df9d
 #### Place this api key in .env in forntend
 
 ## How to Run This Project
