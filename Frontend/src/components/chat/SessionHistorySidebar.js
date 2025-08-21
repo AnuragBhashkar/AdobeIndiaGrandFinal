@@ -108,6 +108,8 @@ const SessionHistorySidebar = ({
   const [isLoading, setIsLoading] = useState(true);
   const { currentTheme } = useTheme();
   const styles = getPdfChatStyles(currentTheme);
+  const [isOpen, setIsOpen] = useState(false); // FIX: Added state declaration
+
 
   useEffect(() => {
     if (!userToken) return;

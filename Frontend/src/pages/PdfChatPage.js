@@ -905,6 +905,7 @@ const PdfChatPage = ({ userToken }) => {
   const [isPersonaMinimized, setIsPersonaMinimized] = useState(false);
   const { currentTheme } = useTheme();
   const styles = getPdfChatStyles(currentTheme);
+  const [messages, setMessages] = useState([]); // FIX: Ensures setMessages is always declared
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [sessionId, setSessionId] = useState(null);
